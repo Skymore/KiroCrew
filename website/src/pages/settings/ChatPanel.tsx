@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { SettingsSection, SettingsCard, SettingsToggle, SettingsSelect, SettingsInput, SettingsButtonGroup } from '../../components/settings'
+import { SettingsSection, SettingsCard, SettingsToggle, SettingsSelect, SettingsInput, SettingsButtonGroup, SettingsMultiSelect } from '../../components/settings'
 import { Btn } from '../../components/ui'
 import { loadChatConfig, saveChatConfig, type ChatConfig, type ContentWidth, type DashboardConfig, type MemoryMode, type SendMode } from '../chat/ChatSettings'
 import { api, type FeatureVideoStatus } from '../../api/client'
@@ -15,6 +15,8 @@ import { readBusySendDefault, setBusySendDefault, type BusySendMode } from '../.
 import { platformShortcut } from '../../utils/platform'
 import { capRoleOther, clampRoleOther } from '../../lib/userProfile'
 import { ROLE_SLUGS, TECH_SLUGS } from '../../lib/profileOptions'
+import { fmtNumber } from '../../i18n/format'
+import { normalizeHiddenModels } from '../../hooks/useInteractiveModels'
 
 import { i18nT } from '../../i18n/t'
 import ErrorNotice from '../../components/ErrorNotice'
@@ -184,7 +186,7 @@ export function ChatPanel() {
   // second toggle during a save carries the first one's value forward.
   const dashCfg = overlay.shown(
     'dashboardConfig',
-    dashQ.data ?? { restore_sessions: false, restore_window_minutes: 30, merge_queued_messages: false, default_memory_mode: 'persistent' as const, widget_density: 'more' as const, verbosity: 'default' as const, quick_send: false, session_grid: false, tail_fork_enabled: false, link_previews: false, mcp_app_panel: false, auto_open_git_panel: false, session_card_source_links: true, folder_suggestions_enabled: true, use_builtin_browser: true },
+    dashQ.data ?? { restore_sessions: false, restore_window_minutes: 30, merge_queued_messages: false, default_memory_mode: 'persistent' as const, widget_density: 'more' as const, verbosity: 'default' as const, quick_send: false, session_grid: false, tail_fork_enabled: false, link_previews: false, mcp_app_panel: false, auto_open_git_panel: false, session_card_source_links: true, folder_suggestions_enabled: true, use_builtin_browser: true, model_picker_hidden_models: [] },
   )
   const shownDefaultMemoryMode = overlay.shown(
     DEFAULT_MEMORY_MODE_PATH,
@@ -489,6 +491,61 @@ export function ChatPanel() {
   // picker still overrides them per-slot; nothing here touches live sessions.
   // Same query key as every other model picker so the list is fetched once.
   const availableModels = useAvailableModels()
+  const [hiddenModelDraft, setHiddenModelDraft] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (hiddenModelDraft === null && dashQ.data) {
+      setHiddenModelDraft(normalizeHiddenModels(dashQ.data.model_picker_hidden_models))
+    }
+  }, [dashQ.data, hiddenModelDraft])
+  const hiddenModels = hiddenModelDraft ?? normalizeHiddenModels(dashCfg.model_picker_hidden_models)
+  const hiddenModelSet = new Set(hiddenModels)
+  const selectedModelIds = new Set(
+    availableModels
+      .filter(model => model.name === 'auto' || !hiddenModelSet.has(model.name))
+      .map(model => model.name),
+  )
+  const selectedModelCount = selectedModelIds.size
+  const modelPickerSummary = selectedModelCount === availableModels.length
+    ? i18nT('pages.settings.chatPanel.model_picker_all_models', { count: fmtNumber(availableModels.length) })
+    : i18nT('pages.settings.chatPanel.model_picker_selected_models', {
+        selected: fmtNumber(selectedModelCount),
+        total: fmtNumber(availableModels.length),
+      })
+  const hiddenModelsMut = useMutation({
+    ...overlay.mutationOpts<string[]>({
+      queryKey: ['dashboardConfig'],
+      mutationFn: (models: string[]) => api.updateDashboardConfig({ model_picker_hidden_models: models }),
+      path: () => 'dashboard.model_picker_hidden_models',
+      displayValue: models => models,
+      applyToCache: (cached, models) => ({
+        ...(cached as DashboardConfig),
+        model_picker_hidden_models: models,
+      }),
+      onFailure: () => {
+        // Stop showing a value the server refused. With the mutation scope below,
+        // this callback can only belong to the newest queued write; older failures
+        // are superseded by a later local intent and remain invisible.
+        setHiddenModelDraft(null)
+        setPathSaveError(
+          'dashboard.model_picker_hidden_models',
+          i18nT('pages.settings.chatPanel.failed_to_save_selectable_models'),
+        )
+      },
+      onSupersede: clearOwnPathError,
+    }),
+    // The endpoint replaces the whole hidden-model list. Serializing this path
+    // prevents an older slow PUT from landing after a newer one and becoming the
+    // server's final value even though the UI correctly showed the newer intent.
+    scope: { id: 'dashboard.model_picker_hidden_models' },
+  })
+  const toggleVisibleModel = (model: string, selected: boolean) => {
+    if (model === 'auto') return
+    const next = selected
+      ? hiddenModels.filter(value => value !== model)
+      : [...hiddenModels.filter(value => value !== model), model]
+    setHiddenModelDraft(next)
+    hiddenModelsMut.mutate(next)
+  }
   // '' in config means "unset" and resolves the same way 'auto' does, so both
   // render as the 'auto' option rather than as a missing selection.
   const defaultModel = mcCfg?.agent?.model || 'auto'
@@ -649,6 +706,25 @@ export function ChatPanel() {
             optionLabels={modelOptions.map(m => (m === 'auto' ? i18nT('pages.settings.chatPanel.default_auto') : m))}
             onChange={v => defaultModelMut.mutate(v)}
             disabled={!mcQ.isSuccess}
+          />
+          <SettingsMultiSelect
+            label={i18nT('pages.settings.chatPanel.selectable_models')}
+            description={i18nT('pages.settings.chatPanel.selectable_models_description')}
+            options={availableModels.map(model => ({
+              value: model.name,
+              label: model.name,
+              description: model.name === 'auto'
+                ? i18nT('pages.settings.chatPanel.auto_always_visible')
+                : model.description,
+              locked: model.name === 'auto',
+            }))}
+            selected={selectedModelIds}
+            onToggle={toggleVisibleModel}
+            summary={modelPickerSummary}
+            searchPlaceholder={i18nT('pages.settings.chatPanel.search_models')}
+            disabled={!dashQ.isSuccess}
+            configKey="dashboard.model_picker_hidden_models"
+            settingId="chat.selectable-models"
           />
           <SettingsSelect
             label={i18nT('pages.settings.chatPanel.default_reasoning_effort')}

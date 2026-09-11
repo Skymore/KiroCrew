@@ -27,10 +27,12 @@ import { useRemoteCapabilities } from '../hooks/useRemoteCapabilities'
 import ModelDropdownList from './ModelDropdownList'
 import { SlotProvider } from '../providers/SlotContext'
 import { useProvider } from '../providers'
+import type { ModelInfo } from '../providers/types'
 import { useAgents } from '../hooks/useAgents'
 import { useFilteredDropdown } from '../hooks/useFilteredDropdown'
 import { useConnectionsUiEnabled } from '../hooks/useConnectionsUi'
 import { useAvailableModels } from '../hooks/useAvailableModels'
+import { filterInteractiveModels, useModelPickerHiddenModels } from '../hooks/useInteractiveModels'
 import { usePlanActionMutation, isPlanAction } from '../hooks/usePlanActionMutation'
 import { useQueuedMessageActions, queuedSendStash } from '../hooks/useQueuedMessageActions'
 import { useListboxKeyboard } from '../hooks/useListboxKeyboard'
@@ -435,7 +437,23 @@ export default function ChatPane({
       .catch(() => setDefaultAgentFailed(true))
   }, [dispatch])
   const agentDD = useFilteredDropdown(installedAgents)
-  const availableModels = useAvailableModels()
+  const localModels = useAvailableModels()
+  const effectiveModels = useMemo<ModelInfo[]>(() => {
+    if (!paneRemoteCrew.isRemote) return localModels
+    return (paneRemoteCrew.capabilities?.models ?? []).map(model => ({
+      name: model.model_name,
+      description: model.description || model.display_name,
+      contextWindow: model.context_window || undefined,
+    }))
+  }, [paneRemoteCrew.isRemote, paneRemoteCrew.capabilities, localModels])
+  const hiddenModelIds = useModelPickerHiddenModels()
+  const availableModels = useMemo(
+    () => filterInteractiveModels(effectiveModels, hiddenModelIds, [
+      paneSlot?.model || '',
+      paneSlot?.served_model || '',
+    ]),
+    [effectiveModels, hiddenModelIds, paneSlot?.model, paneSlot?.served_model],
+  )
   const modelDD = useFilteredDropdown(availableModels)
   // See ChatPage: display what will actually run, not a pin the account lost
   // access to. The slot's own `model_withheld` verdict answers that when the

@@ -3996,6 +3996,15 @@ class KiroCrewConfig:
                 auto_open_browser=dashboard_data.get("auto_open_browser", True),
                 prevent_sleep=_safe_bool(dashboard_data.get("prevent_sleep"), False),
                 quick_send=dashboard_data.get("quick_send", False),
+                model_picker_hidden_models=list(
+                    dict.fromkeys(
+                        model
+                        for raw in _safe_list(dashboard_data.get("model_picker_hidden_models"))
+                        if isinstance(raw, str)
+                        and (model := raw.strip())
+                        and model != "auto"
+                    )
+                ),
                 session_grid=dashboard_data.get("session_grid", False),
                 mcp_app_panel=dashboard_data.get("mcp_app_panel", False),
                 auto_open_git_panel=_safe_bool(dashboard_data.get("auto_open_git_panel"), False),
