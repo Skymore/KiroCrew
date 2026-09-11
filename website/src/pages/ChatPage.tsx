@@ -248,7 +248,7 @@ import WelcomeView from '../components/WelcomeView'
 import { openPanelView, claimAppAutoOpen } from '../hooks/usePanelTabs'
 import { useFilteredDropdown } from '../hooks/useFilteredDropdown'
 import { useAvailableModels } from '../hooks/useAvailableModels'
-import { filterInteractiveModels, useModelPickerHiddenModels } from '../hooks/useInteractiveModels'
+import { filterInteractiveModels, useModelPickerConfigured, useModelPickerHiddenModels } from '../hooks/useInteractiveModels'
 import { useListboxKeyboard } from '../hooks/useListboxKeyboard'
 import { useAgents } from '../hooks/useAgents'
 import { useRemoteCapabilities } from '../hooks/useRemoteCapabilities'
@@ -898,6 +898,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
     }))
   }, [remoteCrew.isRemote, remoteCrew.capabilities, localModels])
   const hiddenModelIds = useModelPickerHiddenModels()
+  const modelPickerConfigured = useModelPickerConfigured()
   const availableModels = useMemo(
     () => {
       const pickerSlot = slots.find(slot => slot.key === activeSlot)
@@ -7433,6 +7434,10 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
                 currentEffort={currentSlot?.reasoning_effort || ''}
                 defaultEffort={defaultEffort}
                 effortLevelsOverride={remoteCrew.isRemote ? (remoteCrew.capabilities?.effort_levels ?? []) : undefined}
+                onManageModels={modelPickerConfigured ? undefined : () => {
+                  setModelDropdown(false)
+                  navigate(settingsPath({ tab: 'chat', highlight: 'key:dashboard.model_picker_hidden_models' }))
+                }}
                 onSetDefault={() => {
                   setModelDropdown(false)
                   navigate(settingsPath({ tab: 'chat', highlight: SETTINGS_DEFAULT_MODEL_ID }))

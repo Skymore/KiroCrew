@@ -6829,6 +6829,8 @@
       "no_matches": "कोई मेल नहीं"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "सेटिंग में प्रबंधित करें",
+      "manage_visible_models": "दिखने वाले मॉडल प्रबंधित करें",
       "default_for_agent": "<agent/> का डिफ़ॉल्ट मॉडल",
       "filter_models": "मॉडल फ़िल्टर करें",
       "model_list": "मॉडल सूची",
@@ -7271,6 +7273,10 @@
       "selected": "चुने गए",
       "showing": "दिखा रहे हैं",
       "you": "तुम"
+    },
+    "multiSelect": {
+      "deselect_all": "चयन हटाएँ",
+      "select_all": "सभी चुनें"
     },
     "searchableSelect": {
       "no_matches": "कोई मेल नहीं",

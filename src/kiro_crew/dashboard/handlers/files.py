@@ -4235,7 +4235,7 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
         # PUT body. Drop them here instead of listing them in _allowed -- they
         # stay unwritable, but a round-tripped read-only field must not 400 an
         # unrelated toggle save.
-        read_only_ignored_keys = {"gitlab_hosts", "jira_hosts", "social_share_enabled"}
+        read_only_ignored_keys = {"gitlab_hosts", "jira_hosts", "social_share_enabled", "model_picker_configured"}
         body = {
             k: v
             for k, v in body.items()
@@ -4487,6 +4487,7 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
                     seen_models.add(model)
                     hidden_models.append(model)
             updates["model_picker_hidden_models"] = hidden_models
+            updates["model_picker_configured"] = True
         # Serialize the read-modify-write under BOTH config locks so no concurrent
         # writer -- in-process OR another process -- can clobber it:
         #  * update_config_locked holds the cross-process advisory file lock
@@ -4619,6 +4620,7 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
             "link_previews": cfg.dashboard.link_previews,
             "folder_suggestions_enabled": cfg.dashboard.folder_suggestions_enabled,
             "model_picker_hidden_models": list(cfg.dashboard.model_picker_hidden_models),
+            "model_picker_configured": cfg.dashboard.model_picker_configured,
             # Read-only here (absent from the PUT allowlist above): authorizing a
             # self-managed GitLab instance is a config-file decision, not a
             # dashboard toggle. The client uses it only to decide which pasted

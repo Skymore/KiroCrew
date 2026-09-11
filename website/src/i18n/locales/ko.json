@@ -6727,6 +6727,8 @@
       "no_matches": "일치 항목 없음"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "설정에서 관리",
+      "manage_visible_models": "표시할 모델 관리",
       "default_for_agent": "<agent/>의 기본 모델",
       "filter_models": "모델 필터",
       "model_list": "모델 목록",
@@ -7161,6 +7163,10 @@
       "selected": "선택됨",
       "showing": "표시 중",
       "you": "나"
+    },
+    "multiSelect": {
+      "deselect_all": "전체 선택 해제",
+      "select_all": "전체 선택"
     },
     "searchableSelect": {
       "no_matches": "일치 항목 없음",

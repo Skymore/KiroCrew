@@ -6829,6 +6829,8 @@
       "no_matches": "কোনো মিল নেই"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "সেটিংসে পরিচালনা করুন",
+      "manage_visible_models": "দৃশ্যমান মডেল পরিচালনা করুন",
       "default_for_agent": "<agent/>-এর ডিফল্ট মডেল",
       "filter_models": "মডেল ফিল্টার করুন",
       "model_list": "মডেল তালিকা",
@@ -7271,6 +7273,10 @@
       "selected": "নির্বাচিত",
       "showing": "দেখানো হচ্ছে",
       "you": "তুমি"
+    },
+    "multiSelect": {
+      "deselect_all": "নির্বাচন বাতিল করুন",
+      "select_all": "সব নির্বাচন করুন"
     },
     "searchableSelect": {
       "no_matches": "কোনো মিল নেই",

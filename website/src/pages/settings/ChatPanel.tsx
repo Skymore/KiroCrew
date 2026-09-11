@@ -511,8 +511,7 @@ export function ChatPanel() {
         selected: fmtNumber(selectedModelCount),
         total: fmtNumber(availableModels.length),
       })
-  const hiddenModelsMut = useMutation({
-    ...overlay.mutationOpts<string[]>({
+  const hiddenModelsOpts = overlay.mutationOpts<string[]>({
       queryKey: ['dashboardConfig'],
       mutationFn: (models: string[]) => api.updateDashboardConfig({ model_picker_hidden_models: models }),
       path: () => 'dashboard.model_picker_hidden_models',
@@ -520,6 +519,7 @@ export function ChatPanel() {
       applyToCache: (cached, models) => ({
         ...(cached as DashboardConfig),
         model_picker_hidden_models: models,
+        model_picker_configured: true,
       }),
       onFailure: () => {
         // Stop showing a value the server refused. With the mutation scope below,
@@ -532,20 +532,40 @@ export function ChatPanel() {
         )
       },
       onSupersede: clearOwnPathError,
-    }),
+    })
+  const hiddenModelsMut = useMutation({
+    ...hiddenModelsOpts,
+    onSuccess: (data, models, token) => {
+      // This acknowledgement is monotonic even if a newer list edit superseded
+      // the successful save. Never mark a visit, pending write, or failure.
+      qc.setQueryData<DashboardConfig>(['dashboardConfig'], cached => cached
+        ? { ...cached, model_picker_configured: true }
+        : cached)
+      return hiddenModelsOpts.onSuccess(data, models, token)
+    },
     // The endpoint replaces the whole hidden-model list. Serializing this path
     // prevents an older slow PUT from landing after a newer one and becoming the
     // server's final value even though the UI correctly showed the newer intent.
     scope: { id: 'dashboard.model_picker_hidden_models' },
   })
+  const replaceHiddenModels = (models: string[]) => {
+    setHiddenModelDraft(models)
+    hiddenModelsMut.mutate(models)
+  }
   const toggleVisibleModel = (model: string, selected: boolean) => {
     if (model === 'auto') return
     const next = selected
       ? hiddenModels.filter(value => value !== model)
       : [...hiddenModels.filter(value => value !== model), model]
-    setHiddenModelDraft(next)
-    hiddenModelsMut.mutate(next)
+    replaceHiddenModels(next)
   }
+  const advertisedModelIds = new Set(availableModels.map(model => model.name))
+  const hiddenUnadvertisedModels = hiddenModels.filter(model => !advertisedModelIds.has(model))
+  const selectAllModels = () => replaceHiddenModels(hiddenUnadvertisedModels)
+  const deselectAllModels = () => replaceHiddenModels([
+    ...hiddenUnadvertisedModels,
+    ...availableModels.filter(model => model.name !== 'auto').map(model => model.name),
+  ])
   // '' in config means "unset" and resolves the same way 'auto' does, so both
   // render as the 'auto' option rather than as a missing selection.
   const defaultModel = mcCfg?.agent?.model || 'auto'
@@ -720,6 +740,16 @@ export function ChatPanel() {
             }))}
             selected={selectedModelIds}
             onToggle={toggleVisibleModel}
+            bulkActions={[
+              {
+                label: i18nT('components.multiSelect.select_all'),
+                onSelect: selectAllModels,
+              },
+              {
+                label: i18nT('components.multiSelect.deselect_all'),
+                onSelect: deselectAllModels,
+              },
+            ]}
             summary={modelPickerSummary}
             searchPlaceholder={i18nT('pages.settings.chatPanel.search_models')}
             disabled={!dashQ.isSuccess}

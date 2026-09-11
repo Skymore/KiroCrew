@@ -3996,6 +3996,14 @@ class KiroCrewConfig:
                 auto_open_browser=dashboard_data.get("auto_open_browser", True),
                 prevent_sleep=_safe_bool(dashboard_data.get("prevent_sleep"), False),
                 quick_send=dashboard_data.get("quick_send", False),
+                model_picker_configured=(
+                    _safe_bool(dashboard_data.get("model_picker_configured"), False)
+                    if "model_picker_configured" in dashboard_data
+                    else any(
+                        isinstance(raw, str) and raw.strip() not in ("", "auto")
+                        for raw in _safe_list(dashboard_data.get("model_picker_hidden_models"))
+                    )
+                ),
                 model_picker_hidden_models=list(
                     dict.fromkeys(
                         model

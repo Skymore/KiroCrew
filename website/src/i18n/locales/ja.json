@@ -6727,6 +6727,8 @@
       "no_matches": "一致するものがありません"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "設定で管理",
+      "manage_visible_models": "表示するモデルを管理",
       "default_for_agent": "<agent/> のデフォルトモデル",
       "filter_models": "モデルをフィルター",
       "model_list": "モデルリスト",
@@ -7161,6 +7163,10 @@
       "selected": "選択済み",
       "showing": "表示中",
       "you": "あなた"
+    },
+    "multiSelect": {
+      "deselect_all": "すべてを選択解除",
+      "select_all": "すべてを選択"
     },
     "searchableSelect": {
       "no_matches": "マッチするものがありません",

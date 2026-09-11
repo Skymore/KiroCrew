@@ -3,7 +3,7 @@
  * Tests the ChatInput component directly to avoid ChatPage's complex dependencies.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -378,6 +378,32 @@ describe('ReasoningEffortDropdown', () => {
     const toggle = screen.getByRole('switch', { name: 'Use configured default' })
     fireEvent.click(toggle)
     await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'max'))
+  })
+
+  it('moves to the configured default before persistence and rolls back a rejected inheritance write', async () => {
+    vi.useFakeTimers()
+    let rejectWrite!: (error: Error) => void
+    mockApi.chatSlotReasoningEffort.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectWrite = reject }))
+    try {
+      renderDropdown({ currentEffort: 'low', defaultEffort: 'high', levelsOverride: ['low', 'medium', 'high'] })
+      const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+      const toggle = screen.getByRole('switch', { name: 'Use configured default' })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      fireEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      expect(slider).toHaveAttribute('aria-valuenow', '2')
+      expect(slider).toHaveAttribute('aria-valuetext', 'High')
+      expect(mockApi.chatSlotReasoningEffort).not.toHaveBeenCalled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+      expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', '')
+      expect(slider).toHaveAttribute('aria-valuetext', 'High')
+      await act(async () => { rejectWrite(new Error('save failed')); await vi.advanceTimersByTimeAsync(0) })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('marks the configured default independently from the current thumb', async () => {

@@ -6727,6 +6727,8 @@
       "no_matches": "无匹配项"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "设置中管理",
+      "manage_visible_models": "管理显示的模型",
       "default_for_agent": "<agent/> 的默认模型",
       "filter_models": "筛选模型",
       "model_list": "模型列表",
@@ -7161,6 +7163,10 @@
       "selected": "已选中",
       "showing": "正在显示",
       "you": "你"
+    },
+    "multiSelect": {
+      "deselect_all": "取消全选",
+      "select_all": "全选"
     },
     "searchableSelect": {
       "no_matches": "无匹配项",

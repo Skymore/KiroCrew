@@ -56,6 +56,56 @@ function wrap(ui: React.ReactElement) {
   return render(<Provider store={store}><QueryClientProvider client={qc}>{ui}</QueryClientProvider></Provider>)
 }
 
+describe('ModelEffortDropdown — visible models shortcut', () => {
+  it('is optional and opens management from between the list and effort controls', () => {
+    const onManageModels = vi.fn()
+    wrap(<ModelEffortDropdown {...baseProps} hasEffort onManageModels={onManageModels} />)
+    const button = screen.getByRole('button', { name: 'Manage visible models' })
+    expect(screen.getByRole('listbox').compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(button.compareDocumentPosition(screen.getByRole('slider')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(button)
+    expect(onManageModels).toHaveBeenCalledTimes(1)
+    expect(SETTINGS_REGISTRY.some(entry => entry.configKey === 'dashboard.model_picker_hidden_models')).toBe(true)
+  })
+
+  it('stays absent after its caller marks configuration complete', () => {
+    wrap(<ModelEffortDropdown {...baseProps} />)
+    expect(screen.queryByRole('button', { name: 'Manage visible models' })).not.toBeInTheDocument()
+  })
+
+  it('places the first-use shortcut between models and effort in keyboard order', async () => {
+    const onListKeyDown = vi.fn()
+    wrap(
+      <ModelEffortDropdown
+        {...baseProps}
+        hasEffort
+        onManageModels={vi.fn()}
+        onListKeyDown={onListKeyDown}
+      />,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByPlaceholderText('Type to filter…')
+    const manage = screen.getByRole('button', { name: 'Manage visible models' })
+    const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    input.focus()
+    await user.tab()
+    expect(manage).toHaveFocus()
+    await user.tab()
+    expect(slider).toHaveFocus()
+
+    const options = screen.getAllByRole('option')
+    const last = options[options.length - 1]
+    last.focus()
+    fireEvent.keyDown(last, { key: 'ArrowDown' })
+    expect(manage).toHaveFocus()
+    fireEvent.keyDown(manage, { key: 'ArrowDown' })
+    expect(slider).toHaveFocus()
+    fireEvent.keyDown(manage, { key: 'ArrowUp' })
+    expect(last).toHaveFocus()
+    expect(onListKeyDown).not.toHaveBeenCalled()
+  })
+})
+
 describe('ModelEffortDropdown — global fallback link', () => {
   it('is absent when the call site passes no handler', () => {
     wrap(<ModelEffortDropdown {...baseProps} />)

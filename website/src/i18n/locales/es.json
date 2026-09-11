@@ -6931,6 +6931,8 @@
       "no_matches": "Sin coincidencias"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "Gestionar en Ajustes",
+      "manage_visible_models": "Gestionar modelos visibles",
       "default_for_agent": "Modelo predeterminado para <agent/>",
       "filter_models": "Filtrar modelos",
       "model_list": "Lista de modelos",
@@ -7381,6 +7383,10 @@
       "selected": "seleccionado",
       "showing": "Mostrando",
       "you": "Tú"
+    },
+    "multiSelect": {
+      "deselect_all": "Anular selección",
+      "select_all": "Seleccionar todo"
     },
     "searchableSelect": {
       "no_matches": "Sin coincidencias",

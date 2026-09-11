@@ -2838,6 +2838,7 @@ class DashboardConfig:
             "Click a suggested reply to send it instantly. Shift+Click to select multiple.",
         ),
     )
+    model_picker_configured: bool = False
     model_picker_hidden_models: list[str] = field(
         default_factory=list,
         metadata=_meta(

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
 
-import { Checkbox, Input } from './ui'
+import { Btn, Checkbox, Input } from './ui'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 import { i18nT } from '../i18n/t'
@@ -17,6 +17,7 @@ interface Props {
   options: MultiSelectOption[]
   selected: ReadonlySet<string>
   onToggle: (value: string, selected: boolean) => void
+  bulkActions?: ReadonlyArray<{ label: string; onSelect: () => void }>
   summary: string
   label: string
   searchPlaceholder?: string
@@ -28,6 +29,7 @@ export default function MultiSelect({
   options,
   selected,
   onToggle,
+  bulkActions,
   summary,
   label,
   searchPlaceholder,
@@ -102,17 +104,28 @@ export default function MultiSelect({
         onKeyDown={handleKeyDown}
         className="w-[min(360px,calc(100vw-32px))] max-h-[360px] overflow-hidden p-0"
       >
-        <div className="flex items-center gap-2 border-b border-border p-2">
-          <Search className="lucide-inline shrink-0 text-muted" aria-hidden />
-          <Input
-            ref={inputRef}
-            autoFocus
-            value={filter}
-            onChange={event => setFilter(event.target.value)}
-            placeholder={searchPlaceholder ?? i18nT('components.searchableSelect.search')}
-            aria-label={searchPlaceholder ?? i18nT('components.searchableSelect.search')}
-            className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] outline-none placeholder:text-muted"
-          />
+        <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
+          <div className="flex min-w-[9rem] flex-1 items-center gap-2">
+            <Search className="lucide-inline shrink-0 text-muted" aria-hidden />
+            <Input
+              ref={inputRef}
+              autoFocus
+              value={filter}
+              onChange={event => setFilter(event.target.value)}
+              placeholder={searchPlaceholder ?? i18nT('components.searchableSelect.search')}
+              aria-label={searchPlaceholder ?? i18nT('components.searchableSelect.search')}
+              className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] outline-none focus-ring placeholder:text-muted"
+            />
+          </div>
+          {!!bulkActions?.length && (
+            <div className="flex shrink-0 items-center gap-1">
+              {bulkActions.map(action => (
+                <Btn key={action.label} type="button" onClick={action.onSelect} className="border-0 px-1.5 py-0.5 text-[11px]">
+                  {action.label}
+                </Btn>
+              ))}
+            </div>
+          )}
         </div>
         <div ref={listRef} role="group" aria-label={label} className="max-h-[300px] overflow-y-auto p-1">
           {filtered.length === 0 && (

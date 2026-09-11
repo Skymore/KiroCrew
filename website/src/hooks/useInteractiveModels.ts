@@ -34,3 +34,13 @@ export function useModelPickerHiddenModels(): string[] {
   })
   return normalizeHiddenModels(data?.model_picker_hidden_models)
 }
+
+/** Keep the first-use prompt hidden until configuration is known. Opening
+ * Settings is not acknowledgement; only the server records a successful save. */
+export function useModelPickerConfigured(): boolean {
+  const { data } = useQuery({
+    queryKey: ['dashboardConfig'],
+    queryFn: () => api.dashboardConfig(),
+  })
+  return data?.model_picker_configured !== false
+}

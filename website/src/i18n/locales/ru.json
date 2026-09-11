@@ -7033,6 +7033,8 @@
       "no_matches": "Совпадений нет"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "Открыть настройки",
+      "manage_visible_models": "Управление видимыми моделями",
       "default_for_agent": "Модель по умолчанию для <agent/>",
       "filter_models": "Фильтр моделей",
       "model_list": "Список моделей",
@@ -7491,6 +7493,10 @@
       "selected": "выбрано",
       "showing": "Показано",
       "you": "Ты"
+    },
+    "multiSelect": {
+      "deselect_all": "Снять выделение",
+      "select_all": "Выбрать все"
     },
     "searchableSelect": {
       "no_matches": "Нет совпадений",

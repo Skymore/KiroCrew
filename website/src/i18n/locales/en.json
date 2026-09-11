@@ -4723,6 +4723,8 @@
       "no_matches": "No matches"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "Manage in Settings",
+      "manage_visible_models": "Manage visible models",
       "default_for_agent": "Default model for <agent/>",
       "filter_models": "Filter models",
       "model_list": "Model list",

@@ -25,6 +25,8 @@ import { agentSwitchFailureMessage } from '../utils/agentSwitchFeedback'
 import { agentOrDefaultLabel } from '../utils/agentLabel'
 import { useRemoteCapabilities } from '../hooks/useRemoteCapabilities'
 import ModelDropdownList from './ModelDropdownList'
+import { ManageModelsFooter } from './ModelEffortDropdown'
+import { settingsPath } from './settingsPath'
 import { SlotProvider } from '../providers/SlotContext'
 import { useProvider } from '../providers'
 import type { ModelInfo } from '../providers/types'
@@ -32,7 +34,7 @@ import { useAgents } from '../hooks/useAgents'
 import { useFilteredDropdown } from '../hooks/useFilteredDropdown'
 import { useConnectionsUiEnabled } from '../hooks/useConnectionsUi'
 import { useAvailableModels } from '../hooks/useAvailableModels'
-import { filterInteractiveModels, useModelPickerHiddenModels } from '../hooks/useInteractiveModels'
+import { filterInteractiveModels, useModelPickerConfigured, useModelPickerHiddenModels } from '../hooks/useInteractiveModels'
 import { usePlanActionMutation, isPlanAction } from '../hooks/usePlanActionMutation'
 import { useQueuedMessageActions, queuedSendStash } from '../hooks/useQueuedMessageActions'
 import { useListboxKeyboard } from '../hooks/useListboxKeyboard'
@@ -447,6 +449,7 @@ export default function ChatPane({
     }))
   }, [paneRemoteCrew.isRemote, paneRemoteCrew.capabilities, localModels])
   const hiddenModelIds = useModelPickerHiddenModels()
+  const modelPickerConfigured = useModelPickerConfigured()
   const availableModels = useMemo(
     () => filterInteractiveModels(effectiveModels, hiddenModelIds, [
       paneSlot?.model || '',
@@ -1562,6 +1565,10 @@ export default function ChatPane({
             <div role="listbox" aria-label={i18nT('components.chatPane.model_list')} className="overflow-y-auto max-h-[280px]">
               <ModelDropdownList models={modelDD.filtered} activeModel={shownModel} onSelect={(name) => { switchModel(name); modelDD.setOpen(false) }} />
             </div>
+            {!modelPickerConfigured && <ManageModelsFooter onManage={() => {
+              modelDD.setOpen(false)
+              navigate(settingsPath({ tab: 'chat', highlight: 'key:dashboard.model_picker_hidden_models' }))
+            }} />}
           </div>,
           document.body,
         )}
