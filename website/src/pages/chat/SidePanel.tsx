@@ -1,5 +1,7 @@
 import { useWorkspaceFullscreenPanel } from '../../hooks/useWorkspaceFullscreenPanel'
 import { panelTabClassName, PANEL_TAB_ICON_CLASS, PANEL_TAB_LIST_CLASS } from '../../components/panelTabStyles'
+import TabCloseMenu from '../../components/TabCloseMenu'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { useId, useState, useRef, useEffect, useCallback, useMemo, Fragment, type ReactNode } from 'react'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useDevMode } from '../../hooks/useDevMode'
@@ -591,6 +593,20 @@ export default function SidePanel({
     }
     closeTab(id)
   }, [tabs, closeTab, deleteTerminalSession])
+  const { confirm, confirmDialog, confirmOpen } = useConfirm()
+  const currentSlotRef = useRef(slot)
+  currentSlotRef.current = slot
+  const handleCloseTabs = async (targets: PanelTab[]) => {
+    if (confirmOpen || targets.length === 0) return
+    if (targets.some(tab => tab.kind === 'file' && tab.content !== tab.savedContent)) {
+      if (!await confirm({
+        title: i18nT('components.markdownPanel.discard_unsaved_changes'),
+        confirmLabel: i18nT('components.markdownPanel.discard_changes_button'),
+      })) return
+    }
+    if (currentSlotRef.current !== slot) return
+    targets.forEach(tab => handleCloseTab(tab.id))
+  }
   // Move a terminal tab OUT of this chat into the app-wide bottom panel. Unlike
   // handleCloseTab this must NOT dispose the session — the PTY + xterm live in
   // Diff view preferences — persisted; 'mc-diff-split' is shared with the
@@ -717,7 +733,7 @@ export default function SidePanel({
           <div className="absolute left-0 top-0 bottom-0 w-[2px] transition-colors duration-200 bg-transparent group-hover/drag:bg-accent resize-accent" />
         </div>
       ) : null}
-      {/* Shared terminal-style strip preserves mouse and touch tab reordering. The class also excludes Electron window dragging. */}
+      {/* Shared terminal-style strip preserves mouse and touch tab reordering; touch hold opens the close menu. The class also excludes Electron window dragging. */}
       <div className={`side-panel-strip panel-toolbar flex items-center gap-1.5 shrink-0 px-2 bg-bg${isBottom ? '' : ' focus-caption-reserve'}`}>
         {/* Fixed views retain their icon-only inactive labels. */}
         <div className="flex items-center gap-2 shrink-0">
@@ -772,7 +788,12 @@ export default function SidePanel({
               separator={i > 0 && t.id !== activeId && dynamicTabs[i - 1].id !== activeId}
               instantLayout={resizing}
               onSelect={() => setActive(t.id)}
-              onClose={() => handleCloseTab(t.id)}
+              onClose={() => handleCloseTabs([t])}
+              closeOthersDisabled={dynamicTabs.length === 1}
+              closeRightDisabled={i === dynamicTabs.length - 1}
+              onCloseOthers={() => handleCloseTabs(dynamicTabs.filter(tab => tab.id !== t.id))}
+              onCloseRight={() => handleCloseTabs(dynamicTabs.slice(i + 1))}
+              onCloseAll={() => handleCloseTabs(dynamicTabs)}
             />
           ))}
         </Reorder.Group>
@@ -903,6 +924,7 @@ export default function SidePanel({
           views mount only when active (cheap + query-driven). */}
       {/* Content area: left + top border (square corner) so the border wraps
           only the content, NOT the tab strip above (which stays borderless). */}
+      {confirmDialog}
       <div className="flex-1 min-h-0 relative">
         {/* The host's leading tab body. Mounted only while active, like the
             category views: it is a query-driven summary, not an editor whose
@@ -1395,16 +1417,24 @@ function TerminalTabTitle({ sessionId, fallback }: { sessionId: string; fallback
  *
  *  A component rather than inline JSX inside the map: each chip owns its own
  *  long-press drag state, and a hook cannot be called from a loop. */
-function DraggableTabItem({ tab, active, separator, instantLayout, onSelect, onClose}: {
+function DraggableTabItem({ tab, active, separator, instantLayout, onSelect, onClose, closeOthersDisabled, closeRightDisabled, onCloseOthers, onCloseRight, onCloseAll }: {
   tab: PanelTab
   active: boolean
   separator: boolean
   /** Skip the layout spring while the panel is being resized — see the caller. */
   instantLayout: boolean
   onSelect: () => void
-  onClose: () => void}) {
-  const { itemProps, dragging } = useLongPressReorder()
+  onClose: () => void
+  closeOthersDisabled: boolean
+  closeRightDisabled: boolean
+  onCloseOthers: () => void
+  onCloseRight: () => void
+  onCloseAll: () => void
+}) {
+  const { itemProps, dragging } = useLongPressReorder({ touchReorder: false })
   return (
+    <TabCloseMenu closeOthersDisabled={closeOthersDisabled} closeRightDisabled={closeRightDisabled}
+      onClose={onClose} onCloseOthers={onCloseOthers} onCloseRight={onCloseRight} onCloseAll={onCloseAll}>
     <Reorder.Item
       value={tab}
       {...itemProps}
@@ -1423,6 +1453,7 @@ function DraggableTabItem({ tab, active, separator, instantLayout, onSelect, onC
       )}
       <TabChip tab={tab} active={active} onSelect={onSelect} onClose={onClose} />
     </Reorder.Item>
+    </TabCloseMenu>
   )
 }
 
