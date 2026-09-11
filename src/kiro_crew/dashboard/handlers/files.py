@@ -85,7 +85,9 @@ from kiro_crew.security import (
 )
 from kiro_crew.slack.handler import is_tracked_channel
 from kiro_crew.validation import (
+    _MODEL_NAME_RE,
     FILE_READ_SCHEMA,
+    MAX_SHORT_STRING,
     ValidationError,
     validate_tool_args,
 )
@@ -4233,7 +4235,7 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
             )
             return body_err
         assert body is not None  # read_bounded_json returns (dict, None) on success
-        _allowed = {"restore_sessions", "restore_window_minutes", "merge_queued_messages", "default_memory_mode", "widget_density", "use_builtin_browser", "verbosity", "quick_send", "session_grid", "tail_fork_enabled", "link_previews", "link_patterns", "mcp_app_panel", "auto_open_git_panel", "folder_suggestions_enabled", "session_card_source_links"}
+        _allowed = {"restore_sessions", "restore_window_minutes", "merge_queued_messages", "default_memory_mode", "widget_density", "use_builtin_browser", "verbosity", "quick_send", "session_grid", "tail_fork_enabled", "link_previews", "link_patterns", "mcp_app_panel", "auto_open_git_panel", "folder_suggestions_enabled", "session_card_source_links", "model_picker_hidden_models"}
         # One-release backward-compat shim for removed key; delete after all clients update.
         deprecated_ignored_keys = {"tail_fork_head_handling"}
         # Read-only keys the GET exposes: both settings surfaces save with
@@ -4506,6 +4508,51 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
                     status=400,
                 )
             updates["session_card_source_links"] = val
+        if "model_picker_hidden_models" in body:
+            val = body["model_picker_hidden_models"]
+            if not isinstance(val, list) or len(val) > 128:
+                _sel().log_tool_invocation(
+                    session_key="dashboard", tool_name="dashboard_config_write", outcome="failure"
+                )
+                return web.json_response(
+                    {
+                        "error": "model_picker_hidden_models must be an array of at most 128 model IDs",
+                        "code": "invalid_model_picker_hidden_models",
+                    },
+                    status=400,
+                )
+            hidden_models: list[str] = []
+            seen_models: set[str] = set()
+            for raw_model in val:
+                if not isinstance(raw_model, str):
+                    _sel().log_tool_invocation(
+                        session_key="dashboard", tool_name="dashboard_config_write", outcome="failure"
+                    )
+                    return web.json_response(
+                        {
+                            "error": "model_picker_hidden_models entries must be strings",
+                            "code": "invalid_model_picker_hidden_models",
+                        },
+                        status=400,
+                    )
+                model = raw_model.strip()
+                if not model or model == "auto":
+                    continue
+                if len(model) > MAX_SHORT_STRING or not _MODEL_NAME_RE.fullmatch(model):
+                    _sel().log_tool_invocation(
+                        session_key="dashboard", tool_name="dashboard_config_write", outcome="failure"
+                    )
+                    return web.json_response(
+                        {
+                            "error": "model_picker_hidden_models contains an invalid model ID",
+                            "code": "invalid_model_picker_hidden_models",
+                        },
+                        status=400,
+                    )
+                if model not in seen_models:
+                    seen_models.add(model)
+                    hidden_models.append(model)
+            updates["model_picker_hidden_models"] = hidden_models
         # Serialize the read-modify-write under BOTH config locks so no concurrent
         # writer -- in-process OR another process -- can clobber it:
         #  * update_config_locked holds the cross-process advisory file lock
@@ -4637,6 +4684,7 @@ async def api_dashboard_config(request: web.Request) -> web.Response:
             "tail_fork_enabled": cfg.dashboard.tail_fork_enabled,
             "link_previews": cfg.dashboard.link_previews,
             "folder_suggestions_enabled": cfg.dashboard.folder_suggestions_enabled,
+            "model_picker_hidden_models": list(cfg.dashboard.model_picker_hidden_models),
             # Read-only here (absent from the PUT allowlist above): authorizing a
             # self-managed GitLab instance is a config-file decision, not a
             # dashboard toggle. The client uses it only to decide which pasted

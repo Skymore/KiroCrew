@@ -325,12 +325,15 @@ describe('ReasoningEffortDropdown', () => {
     await vi.waitFor(() => expect(slider.getAttribute('aria-valuemax')).toBe('4'))
   })
 
-  it('"Use model default" toggle reflects the empty effort and disables the slider', async () => {
+  it('keeps the slider operable while the default mode is active', async () => {
     renderDropdown({ currentEffort: '' })
     const toggle = await screen.findByRole('switch', { name: 'Use model default' })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
-    expect(slider.getAttribute('aria-disabled')).toBe('true')
+    expect(slider.getAttribute('aria-disabled')).toBeNull()
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'xhigh'))
   })
 
   it('toggling default on persists the empty sentinel; off persists a concrete level', async () => {
@@ -365,6 +368,47 @@ describe('ReasoningEffortDropdown', () => {
     const toggle = await screen.findByRole('switch', { name: 'Use configured default' })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     expect(screen.queryByRole('switch', { name: 'Use model default' })).not.toBeInTheDocument()
+  })
+
+  it('syncs the default thumb when live levels arrive asynchronously', async () => {
+    mockApi.effortLevels.mockResolvedValueOnce(['low', 'max'])
+    renderDropdown({ currentEffort: '', defaultEffort: 'max' })
+    const slider = await screen.findByRole('slider', { name: 'Reasoning effort' })
+    await vi.waitFor(() => expect(slider.getAttribute('aria-valuemax')).toBe('1'))
+    const toggle = screen.getByRole('switch', { name: 'Use configured default' })
+    fireEvent.click(toggle)
+    await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'max'))
+  })
+
+  it('marks the configured default independently from the current thumb', async () => {
+    renderDropdown({ currentEffort: 'low', defaultEffort: 'high' })
+    const slider = await screen.findByRole('slider', { name: 'Reasoning effort' })
+    await vi.waitFor(() => expect(slider.getAttribute('aria-valuetext')).toBe('Low'))
+    const marker = screen.getByRole('img', { name: 'Configured default' })
+    expect(marker).toHaveAttribute('data-slider-marker')
+    expect(slider.getAttribute('aria-valuenow')).toBe('0')
+  })
+
+  it('does not render a default marker without a configured level or when it is absent', async () => {
+    const view = renderDropdown({ defaultEffort: '' })
+    await screen.findByRole('slider', { name: 'Reasoning effort' })
+    expect(screen.queryByRole('img', { name: 'Configured default' })).toBeNull()
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <Provider store={view.store}>
+          <ReasoningEffortDropdown slot="s1" currentEffort="low" defaultEffort="ultra" onClose={vi.fn()} levelsOverride={['low', 'medium', 'high']} />
+        </Provider>
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByRole('img', { name: 'Configured default' })).toBeNull()
+  })
+
+  it('retains the help and Faster / Smarter labels in the inline control', async () => {
+    renderDropdown()
+    await screen.findByRole('slider', { name: 'Reasoning effort' })
+    expect(screen.getByText('Faster')).toBeInTheDocument()
+    expect(screen.getByText('Smarter')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More information' })).toBeInTheDocument()
   })
 
   it('keeps the bare "Default" wording when no default is configured', async () => {

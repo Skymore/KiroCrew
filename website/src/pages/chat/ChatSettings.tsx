@@ -121,4 +121,5 @@ export interface DashboardConfig {
   auto_open_git_panel: boolean
   session_card_source_links: boolean
   folder_suggestions_enabled: boolean
+  model_picker_hidden_models: string[]
 }

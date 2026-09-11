@@ -75,6 +75,7 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
   const concrete = currentEffort && !levels.includes(currentEffort) ? [...levels, currentEffort] : levels
   const maxIdx = Math.max(0, concrete.length - 1)
   const currentIdx = concrete.indexOf(currentEffort)
+  const defaultIdx = defaultEffort ? concrete.indexOf(defaultEffort) : -1
 
   // Optimistic default state so the toggle flips instantly; the persisted value
   // catches up after the debounced write + slot refresh.
@@ -83,14 +84,20 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
 
   // idx = the concrete level the slider points at. Persists while Default is on
   // so toggling Default off restores the user's last explicit pick.
-  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : Math.min(2, maxIdx))
-  useEffect(() => { if (currentIdx >= 0) setIdx(currentIdx) }, [currentIdx])
+  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : (defaultIdx >= 0 ? defaultIdx : Math.min(2, maxIdx)))
+  useEffect(() => {
+    if (currentIdx >= 0) setIdx(currentIdx)
+    else if (propDefault && defaultIdx >= 0) setIdx(defaultIdx)
+  }, [currentIdx, propDefault, defaultIdx])
   // Async failures must restore the latest authoritative props, not the values
   // captured when a debounced pick started. Keep the concrete selection while
   // Default is authoritative: it is intentionally remembered for the next
   // time the user disables Default.
-  const authoritativeRef = useRef({ isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx })
-  authoritativeRef.current = { isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx }
+  const authoritativeIdx = currentIdx >= 0
+    ? currentIdx
+    : (propDefault && defaultIdx >= 0 ? defaultIdx : idx)
+  const authoritativeRef = useRef({ isDefault: propDefault, idx: authoritativeIdx })
+  authoritativeRef.current = { isDefault: propDefault, idx: authoritativeIdx }
 
   // Persist one level pick through the shared switch protocol (#4523): the
   // local optimistic state above masks staleness in THIS popover, but the
@@ -187,7 +194,7 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
 
   return (
     <div className={embedded ? 'px-3 py-2.5' : 'rounded-lg bg-bg-elevated border border-border px-4 py-3.5 w-[240px]'}>
-      <div className="flex items-center gap-1.5 mb-3">
+      <div className={`flex items-center gap-1.5 ${defaultIdx >= 0 ? 'mb-5' : 'mb-3'}`}>
         <span className="text-[14px] font-medium text-muted uppercase tracking-[.04em] leading-none">{i18nT('components.reasoningEffortDropdown.effort')}</span>
         <span className="relative inline-flex items-center overflow-hidden leading-none" style={{ height: '1.5em' }}>
           <AnimatePresence mode="popLayout" initial={false}>
@@ -212,16 +219,17 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
         step={1}
         value={idx}
         onChange={handleSlide}
-        disabled={isDefault}
         emphasizeMax={!isDefault}
+        markerValue={defaultIdx >= 0 ? defaultIdx : undefined}
+        markerLabel={defaultIdx >= 0 ? i18nT('components.reasoningEffortDropdown.configured_default_marker') : undefined}
         formatValue={v => effortLabel(concrete[v] ?? '')}
       />
-      <div className={`relative mt-1 h-[14px] text-[10px] text-muted select-none transition-opacity ${isDefault ? 'opacity-40' : ''}`}>
+      <div className="relative mt-1 h-[14px] select-none text-[10px] text-muted">
         <span className="absolute left-0">{i18nT('components.reasoningEffortDropdown.faster')}</span>
         <span className="absolute right-0">{i18nT('components.reasoningEffortDropdown.smarter')}</span>
       </div>
-      <div className="flex items-center justify-between gap-2 mt-3.5">
-        <span className="text-[12px] text-text">{defaultToggleLabel}</span>
+      <div className="mt-2.5 flex items-center justify-end gap-2">
+        <span className="text-[11px] text-muted">{defaultToggleLabel}</span>
         <Toggle checked={isDefault} onChange={handleToggleDefault} label={defaultToggleLabel} />
       </div>
     </div>
