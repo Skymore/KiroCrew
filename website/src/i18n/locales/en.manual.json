@@ -2799,6 +2799,10 @@
       "trust_all_tools_channel": "Trust all tools in this channel — persists across restarts",
       "trust_this_command": "Trust “<mono>{{cmd}}</mono>”"
     },
+    "multiSelect": {
+      "deselect_all": "Deselect all",
+      "select_all": "Select all"
+    },
     "searchableSelect": {
       "no_matches": "No matches",
       "search": "Search…"

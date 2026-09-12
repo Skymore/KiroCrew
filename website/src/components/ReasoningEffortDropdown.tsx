@@ -84,20 +84,15 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
 
   // idx = the concrete level the slider points at. Persists while Default is on
   // so toggling Default off restores the user's last explicit pick.
-  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : (defaultIdx >= 0 ? defaultIdx : Math.min(2, maxIdx)))
-  useEffect(() => {
-    if (currentIdx >= 0) setIdx(currentIdx)
-    else if (propDefault && defaultIdx >= 0) setIdx(defaultIdx)
-  }, [currentIdx, propDefault, defaultIdx])
+  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : Math.min(2, maxIdx))
+  useEffect(() => { if (currentIdx >= 0) setIdx(currentIdx) }, [currentIdx])
+  useEffect(() => { setIdx(prev => Math.min(prev, maxIdx)) }, [maxIdx])
   // Async failures must restore the latest authoritative props, not the values
   // captured when a debounced pick started. Keep the concrete selection while
   // Default is authoritative: it is intentionally remembered for the next
   // time the user disables Default.
-  const authoritativeIdx = currentIdx >= 0
-    ? currentIdx
-    : (propDefault && defaultIdx >= 0 ? defaultIdx : idx)
-  const authoritativeRef = useRef({ isDefault: propDefault, idx: authoritativeIdx })
-  authoritativeRef.current = { isDefault: propDefault, idx: authoritativeIdx }
+  const authoritativeRef = useRef({ isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx })
+  authoritativeRef.current = { isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx }
 
   // Persist one level pick through the shared switch protocol (#4523): the
   // local optimistic state above masks staleness in THIS popover, but the
@@ -219,17 +214,18 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
         step={1}
         value={idx}
         onChange={handleSlide}
+        disabled={isDefault}
         emphasizeMax={!isDefault}
         markerValue={defaultIdx >= 0 ? defaultIdx : undefined}
         markerLabel={defaultIdx >= 0 ? i18nT('components.reasoningEffortDropdown.configured_default_marker') : undefined}
         formatValue={v => effortLabel(concrete[v] ?? '')}
       />
-      <div className="relative mt-1 h-[14px] select-none text-[10px] text-muted">
+      <div className={`relative mt-1 h-[14px] select-none text-[10px] text-muted transition-opacity ${isDefault ? 'opacity-40' : ''}`}>
         <span className="absolute left-0">{i18nT('components.reasoningEffortDropdown.faster')}</span>
         <span className="absolute right-0">{i18nT('components.reasoningEffortDropdown.smarter')}</span>
       </div>
-      <div className="mt-2.5 flex items-center justify-end gap-2">
-        <span className="text-[11px] text-muted">{defaultToggleLabel}</span>
+      <div className="mt-3.5 flex items-center justify-between gap-2">
+        <span className="text-[12px] text-text">{defaultToggleLabel}</span>
         <Toggle checked={isDefault} onChange={handleToggleDefault} label={defaultToggleLabel} />
       </div>
     </div>

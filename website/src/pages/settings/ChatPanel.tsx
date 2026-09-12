@@ -16,7 +16,7 @@ import { api, type FeatureVideoStatus } from '../../api/client'
 import { useAppSelector } from '../../store'
 import { serializeDefaultMemoryModeUpdate } from '../../api/queryClient'
 import { useOptimisticConfigPaths, setConfigPathValue } from './useOptimisticConfigPaths'
-import { useAvailableModels } from '../../hooks/useAvailableModels'
+import { useAvailableModelsQuery } from '../../hooks/useAvailableModels'
 import { usePlainDiff } from '../../hooks/usePlainDiff'
 import { EFFORT_LEVELS, effortLabel, modelSupportsEffort } from '../../lib/effort'
 import { isMac } from '../../utils/platform'
@@ -52,7 +52,9 @@ function restoreLabels(): string[] {
 const FEATURE_VIDEO_POLL_MS = 15_000
 
 const COMPACT_OPTIONS = ['20', '40', '60', '70', '80', '90']
-const COMPACT_LABELS = ['20% (aggressive)', '40%', '60%', '70% (default)', '80%', '90%']
+function compactLabels(): string[] {
+  return ['20%', '40%', '60%', `70% (${i18nT('components.jobForm.default')})`, '80%', '90%']
+}
 
 // About You — slugs shared with onboarding step 2 and context.py's prompt maps.
 const ROLE_OPTIONS = ['', ...ROLE_SLUGS]
@@ -413,6 +415,12 @@ export function LinkPatternsEditor({ label, description, configKey, rules, onSav
   )
 }
 
+type HiddenModelsUpdate = {
+  next: string[]
+  add?: string[]
+  remove?: string[]
+}
+
 export function ChatPanel() {
   const qc = useQueryClient()
   const [chatCfg, setChatCfg] = useState<ChatConfig>(loadChatConfig)
@@ -762,14 +770,12 @@ export function ChatPanel() {
   // These are the DEFAULTS for new sessions. A session's own model/effort
   // picker still overrides them per-slot; nothing here touches live sessions.
   // Same query key as every other model picker so the list is fetched once.
-  const availableModels = useAvailableModels()
-  const [hiddenModelDraft, setHiddenModelDraft] = useState<string[] | null>(null)
-  useEffect(() => {
-    if (hiddenModelDraft === null && dashQ.data) {
-      setHiddenModelDraft(normalizeHiddenModels(dashQ.data.model_picker_hidden_models))
-    }
-  }, [dashQ.data, hiddenModelDraft])
-  const hiddenModels = hiddenModelDraft ?? normalizeHiddenModels(dashCfg.model_picker_hidden_models)
+  const availableModelsQ = useAvailableModelsQuery()
+  const availableModels = availableModelsQ.data
+  const hiddenModels = overlay.shown(
+    'dashboard.model_picker_hidden_models',
+    normalizeHiddenModels(dashCfg.model_picker_hidden_models),
+  )
   const hiddenModelSet = new Set(hiddenModels)
   const selectedModelIds = new Set(
     availableModels
@@ -783,41 +789,62 @@ export function ChatPanel() {
         selected: fmtNumber(selectedModelCount),
         total: fmtNumber(availableModels.length),
       })
-  const hiddenModelsMut = useMutation({
-    ...overlay.mutationOpts<string[]>({
+  const hiddenModelsOpts = overlay.mutationOpts<HiddenModelsUpdate>({
       queryKey: ['dashboardConfig'],
-      mutationFn: (models: string[]) => api.updateDashboardConfig({ model_picker_hidden_models: models }),
+      mutationFn: ({ add, remove }: HiddenModelsUpdate) => api.updateDashboardConfig({
+        ...(add ? { model_picker_hidden_models_add: add } : {}),
+        ...(remove ? { model_picker_hidden_models_remove: remove } : {}),
+      }),
       path: () => 'dashboard.model_picker_hidden_models',
-      displayValue: models => models,
-      applyToCache: (cached, models) => ({
+      displayValue: update => update.next,
+      applyToCache: (cached, update) => ({
         ...(cached as DashboardConfig),
-        model_picker_hidden_models: models,
+        model_picker_hidden_models: update.next,
+        model_picker_configured: true,
       }),
       onFailure: () => {
-        // Stop showing a value the server refused. With the mutation scope below,
-        // this callback can only belong to the newest queued write; older failures
-        // are superseded by a later local intent and remain invisible.
-        setHiddenModelDraft(null)
         setPathSaveError(
           'dashboard.model_picker_hidden_models',
           i18nT('pages.settings.chatPanel.failed_to_save_selectable_models'),
         )
       },
       onSupersede: clearOwnPathError,
-    }),
-    // The endpoint replaces the whole hidden-model list. Serializing this path
-    // prevents an older slow PUT from landing after a newer one and becoming the
-    // server's final value even though the UI correctly showed the newer intent.
+    })
+  const hiddenModelsMut = useMutation({
+    ...hiddenModelsOpts,
+    onSuccess: (data, update, token) => {
+      // This acknowledgement is monotonic even if a newer list edit superseded
+      // the successful save. Never mark a visit, pending write, or failure.
+      qc.setQueryData<DashboardConfig>(['dashboardConfig'], cached => cached
+        ? { ...cached, model_picker_configured: true }
+        : cached)
+      return hiddenModelsOpts.onSuccess(data, update, token)
+    },
+    // Serializing this path keeps this tab's delta sequence in UI order while the
+    // server applies each delta against the current config under its write lock.
     scope: { id: 'dashboard.model_picker_hidden_models' },
   })
+  const saveHiddenModels = (update: HiddenModelsUpdate) => {
+    hiddenModelsMut.mutate(update)
+  }
   const toggleVisibleModel = (model: string, selected: boolean) => {
     if (model === 'auto') return
     const next = selected
       ? hiddenModels.filter(value => value !== model)
       : [...hiddenModels.filter(value => value !== model), model]
-    setHiddenModelDraft(next)
-    hiddenModelsMut.mutate(next)
+    saveHiddenModels(selected ? { next, remove: [model] } : { next, add: [model] })
   }
+  const advertisedModelIds = new Set(availableModels.map(model => model.name))
+  const hiddenUnadvertisedModels = hiddenModels.filter(model => !advertisedModelIds.has(model))
+  const advertisedOptionalModelIds = availableModels.filter(model => model.name !== 'auto').map(model => model.name)
+  const selectAllModels = () => saveHiddenModels({
+    next: hiddenUnadvertisedModels,
+    remove: advertisedOptionalModelIds,
+  })
+  const deselectAllModels = () => saveHiddenModels({
+    next: [...hiddenUnadvertisedModels, ...advertisedOptionalModelIds],
+    add: advertisedOptionalModelIds,
+  })
   // '' in config means "unset" and resolves the same way 'auto' does, so both
   // render as the 'auto' option rather than as a missing selection.
   const defaultModel = mcCfg?.agent?.model || 'auto'
@@ -961,6 +988,17 @@ export function ChatPanel() {
           <Btn onClick={() => mcQ.refetch()}>{i18nT('pages.settings.chatPanel.retry')}</Btn>
         </div>
       )}
+      {(availableModelsQ.isError || availableModelsQ.isDegraded) && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {/* No hand-off: the editable drafts in this panel stay mounted while
+              the catalog retry runs; navigating away could discard them. */}
+          <ErrorNotice
+            className="flex-1 min-w-[16rem]"
+            message={i18nT('pages.settings.chatPanel.failed_to_load_config')}
+          />
+          <Btn onClick={() => availableModelsQ.refetch()}>{i18nT('pages.settings.chatPanel.retry')}</Btn>
+        </div>
+      )}
 
       <SettingsSection title={i18nT('pages.settings.chatPanel.model')}>
         {/* Grouped by role so each block reads as "which model + how hard it
@@ -992,9 +1030,19 @@ export function ChatPanel() {
             }))}
             selected={selectedModelIds}
             onToggle={toggleVisibleModel}
+            bulkActions={[
+              {
+                label: i18nT('components.multiSelect.select_all'),
+                onSelect: selectAllModels,
+              },
+              {
+                label: i18nT('components.multiSelect.deselect_all'),
+                onSelect: deselectAllModels,
+              },
+            ]}
             summary={modelPickerSummary}
             searchPlaceholder={i18nT('pages.settings.chatPanel.search_models')}
-            disabled={!dashQ.isSuccess}
+            disabled={!dashQ.isSuccess || !availableModelsQ.isSuccess || availableModelsQ.isDegraded}
             configKey="dashboard.model_picker_hidden_models"
             settingId="chat.selectable-models"
           />
@@ -1302,7 +1350,7 @@ export function ChatPanel() {
             description={i18nT('pages.settings.chatPanel.context_usage_at_which_auto_compaction_triggers')}
             value={String(mcCfg?.session?.autocompact_pct ?? 70)}
             options={COMPACT_OPTIONS}
-            optionLabels={COMPACT_LABELS}
+            optionLabels={compactLabels()}
             onChange={v =>
               api.patchConfig('session.autocompact_pct', Number(v))
                 .then(() => qc.invalidateQueries({ queryKey: ['kirocrewConfig'] }))

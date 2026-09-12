@@ -3,7 +3,7 @@
  * Tests the ChatInput component directly to avoid ChatPage's complex dependencies.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -325,15 +325,15 @@ describe('ReasoningEffortDropdown', () => {
     await vi.waitFor(() => expect(slider.getAttribute('aria-valuemax')).toBe('4'))
   })
 
-  it('keeps the slider operable while the default mode is active', async () => {
+  it('disables the slider while the default mode is active', async () => {
     renderDropdown({ currentEffort: '' })
     const toggle = await screen.findByRole('switch', { name: 'Use model default' })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
-    expect(slider.getAttribute('aria-disabled')).toBeNull()
+    expect(slider.getAttribute('aria-disabled')).toBe('true')
     fireEvent.keyDown(slider, { key: 'ArrowRight' })
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
-    await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'xhigh'))
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(mockApi.chatSlotReasoningEffort).not.toHaveBeenCalled()
   })
 
   it('toggling default on persists the empty sentinel; off persists a concrete level', async () => {
@@ -378,6 +378,33 @@ describe('ReasoningEffortDropdown', () => {
     const toggle = screen.getByRole('switch', { name: 'Use configured default' })
     fireEvent.click(toggle)
     await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'max'))
+  })
+
+  it('keeps the remembered concrete pick while persisting default inheritance', async () => {
+    vi.useFakeTimers()
+    let rejectWrite!: (error: Error) => void
+    mockApi.chatSlotReasoningEffort.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectWrite = reject }))
+    try {
+      renderDropdown({ currentEffort: 'low', defaultEffort: 'high', levelsOverride: ['low', 'medium', 'high'] })
+      const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+      const toggle = screen.getByRole('switch', { name: 'Use configured default' })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      fireEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      expect(slider).toHaveAttribute('aria-disabled', 'true')
+      expect(slider).toHaveAttribute('aria-valuenow', '0')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      expect(mockApi.chatSlotReasoningEffort).not.toHaveBeenCalled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+      expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', '')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      await act(async () => { rejectWrite(new Error('save failed')); await vi.advanceTimersByTimeAsync(0) })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('marks the configured default independently from the current thumb', async () => {

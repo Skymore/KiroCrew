@@ -1,9 +1,11 @@
 import { Trans } from 'react-i18next'
-import { Settings2, Pin, Check, Ban } from 'lucide-react'
-import { Input } from './ui'
+import { Settings2, Pin, Check, Ban, ChevronRight } from 'lucide-react'
+import { Btn, Input } from './ui'
+import ErrorNotice from './ErrorNotice'
 import ModelDropdownList, { type ModelItem } from './ModelDropdownList'
 import ReasoningEffortDropdown from './ReasoningEffortDropdown'
 
+import { useImeGuard } from '../hooks/useImeGuard'
 import { i18nT } from '../i18n/t'
 
 interface Props {
@@ -16,6 +18,8 @@ interface Props {
   filter: string
   setFilter: (v: string) => void
   onClose: () => void
+  modelVisibilityError?: boolean
+  onRetryModelVisibility?: () => void
   hasEffort: boolean
   slot: string | null
   currentEffort: string
@@ -32,6 +36,8 @@ interface Props {
    *  call sites that have no router (or don't want the link) are unaffected —
    *  the row is simply not rendered. */
   onSetDefault?: () => void
+  /** First-use shortcut to the persistent visible-model setting. */
+  onManageModels?: () => void
   /** Pin the currently-active model as this agent's own default, in place. Omit
    *  to hide the row (e.g. surfaces with no agent in scope). */
   onPinToAgent?: () => void
@@ -59,13 +65,16 @@ const WIDTH = 340
 /** Model picker with reasoning effort embedded below the searchable model list. */
 export default function ModelEffortDropdown({
   anchorRect, dropdownRef, inputRef, models, activeModel, onSelectModel,
-  filter, setFilter, onClose, hasEffort, slot, currentEffort, onListKeyDown, onSetDefault,
+  filter, setFilter, onClose, hasEffort, slot, currentEffort, onListKeyDown, onSetDefault, onManageModels,
+  modelVisibilityError = false, onRetryModelVisibility,
   defaultEffort = '', effortLevelsOverride, onPinToAgent, agentName = '', pinModelName = '',
   pinModelUnavailable = false, pinnedToAgent = false,
 }: Props) {
+  const ime = useImeGuard()
   // Right-align the dropdown to the button's right edge (clamped to viewport).
   const width = Math.min(WIDTH, window.innerWidth - 16)
   const left = Math.max(8, Math.min(anchorRect.right - width, window.innerWidth - width - 8))
+  const maxHeight = Math.max(0, anchorRect.top - 12)
 
   return (
     // The dialog delegates list navigation from its filter and option rows, but
@@ -82,7 +91,17 @@ export default function ModelEffortDropdown({
         // into those controls instead of using the listbox hook's compact-menu
         // behavior, which closes menus that contain options only.
         if (event.key === 'Tab') {
+          if (!ime.claimKey(event)) return
           if (!event.shiftKey && target.tagName === 'INPUT') {
+            const nextControl = event.currentTarget.querySelector<HTMLElement>(
+              '[data-model-picker-manage], [role="slider"]',
+            )
+            if (nextControl) {
+              event.preventDefault()
+              event.stopPropagation()
+              nextControl.focus()
+            }
+          } else if (!event.shiftKey && target.closest('[data-model-picker-manage]')) {
             const slider = event.currentTarget.querySelector<HTMLElement>('[role="slider"]')
             if (slider) {
               event.preventDefault()
@@ -92,51 +111,92 @@ export default function ModelEffortDropdown({
           }
           return
         }
-        if (target.closest('[role="slider"],[role="switch"]')) return
-        if (event.key === 'ArrowDown' && target.getAttribute('role') === 'option') {
-          const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'))
-          if (target === options[options.length - 1]) {
+        if (target.closest('[data-model-picker-manage]')) {
+          if (event.key === 'ArrowDown') {
             const slider = event.currentTarget.querySelector<HTMLElement>('[role="slider"]')
             if (slider) {
               event.preventDefault()
               event.stopPropagation()
               slider.focus()
+            }
+          } else if (event.key === 'ArrowUp') {
+            const options = Array.from(
+              event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'),
+            )
+            const lastOption = options[options.length - 1]
+            if (lastOption) {
+              event.preventDefault()
+              event.stopPropagation()
+              lastOption.focus()
+            }
+          }
+          return
+        }
+        if (target.closest('[role="slider"],[role="switch"]')) return
+        if (event.key === 'ArrowDown' && target.getAttribute('role') === 'option') {
+          const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'))
+          if (target === options[options.length - 1]) {
+            const nextControl = event.currentTarget.querySelector<HTMLElement>(
+              '[data-model-picker-manage], [role="slider"]',
+            )
+            if (nextControl) {
+              event.preventDefault()
+              event.stopPropagation()
+              nextControl.focus()
               return
             }
           }
         }
         onListKeyDown(event)
       }}
-      className="fixed z-[9999] bg-bg-elevated border border-border rounded-xl shadow-xl overflow-hidden animate-slide-up"
-      style={{ width, bottom: window.innerHeight - anchorRect.top + 4, left }}
+      className="fixed z-[9999] flex flex-col bg-bg-elevated border border-border rounded-xl shadow-xl overflow-hidden animate-slide-up"
+      style={{ width, maxHeight, bottom: window.innerHeight - anchorRect.top + 4, left }}
     >
-          <div className="flex flex-col p-1">
-            <div className="px-1.5 pt-1.5 pb-1">
+          <div className="flex min-h-0 flex-1 flex-col p-1">
+            <div className="shrink-0 px-1.5 pt-1.5 pb-1">
               <Input
                 ref={inputRef}
                 type="text"
                 aria-label={i18nT('components.modelEffortDropdown.filter_models')}
                 placeholder={i18nT('components.modelEffortDropdown.type_to_filter')}
                 value={filter}
+                {...ime.bindComposition<HTMLInputElement>()}
                 onChange={e => setFilter(e.target.value)}
                 className="w-full px-2 py-1 text-[13px]"
               />
             </div>
-            <div role="listbox" aria-label={i18nT('components.modelEffortDropdown.model_list')} className="max-h-[240px] overflow-y-auto">
+            {modelVisibilityError && (
+              <div className="flex shrink-0 items-center gap-2 px-1.5 py-1">
+                {/* No hand-off: the chat composer may contain an unsent draft.
+                    Retrying in place preserves it. */}
+                <ErrorNotice
+                  className="min-w-0 flex-1"
+                  variant="inline"
+                  message={i18nT('pages.settings.chatPanel.failed_to_load_dashboard_config')}
+                />
+                {onRetryModelVisibility && (
+                  <Btn type="button" className="shrink-0" onClick={onRetryModelVisibility}>
+                    {i18nT('pages.settings.chatPanel.retry')}
+                  </Btn>
+                )}
+              </div>
+            )}
+            <div role="listbox" aria-label={i18nT('components.modelEffortDropdown.model_list')} className="min-h-0 flex-1 max-h-[240px] overflow-y-auto">
               <ModelDropdownList models={models} activeModel={activeModel} onSelect={onSelectModel} />
             </div>
+            {onManageModels && <ManageModelsFooter onManage={onManageModels} />}
             {hasEffort && slot && (
-              <div className="mt-0.5 border-t border-border">
+              <div className="mt-0.5 shrink-0 border-t border-border">
                 <ReasoningEffortDropdown slot={slot} currentEffort={currentEffort} defaultEffort={defaultEffort} onClose={onClose} embedded levelsOverride={effortLevelsOverride} />
               </div>
             )}
             {onPinToAgent && agentName && (
-              <button
+              <Btn
                 type="button"
                 onClick={pinnedToAgent || pinModelUnavailable ? undefined : onPinToAgent}
                 disabled={pinnedToAgent || pinModelUnavailable}
                 aria-pressed={pinnedToAgent}
-                className="shrink-0 border-t border-border flex items-center justify-between gap-2 px-3 py-2 text-[12px] cursor-pointer bg-transparent border-x-0 border-b-0 text-muted hover:text-text hover:bg-bg-hover transition-colors disabled:cursor-default disabled:hover:bg-transparent"
+                className="w-full shrink-0 justify-between rounded-none border-x-0 border-b-0 px-3 py-2 text-[12px] text-muted disabled:hover:bg-transparent"
               >
                 {/* Wraps rather than truncates. The label's whole job is to name
                     WHICH agent and WHICH model the write targets, and both
@@ -144,8 +204,8 @@ export default function ModelEffortDropdown({
                     part that carries the meaning. English fits on one line, but
                     the disambiguating word costs 8-14 characters in the Romance
                     locales ("modelo predeterminado", "modèle par défaut"), so
-                    those overflow 340px. The popover already springs its height
-                    to the measured page, so a second line is free. min-w-0 lets
+                    those overflow 340px. The popover grows with its content, so
+                    a second line is free. min-w-0 lets
                     the flex item shrink below its content; break-words is the
                     backstop for a model id longer than one line. */}
                 <span className="min-w-0 text-left break-words">
@@ -167,20 +227,43 @@ export default function ModelEffortDropdown({
                         }}
                       />}
                 </span>
-                {pinnedToAgent ? <Check size={13} className="text-accent" /> : pinModelUnavailable ? <Ban size={13} /> : <Pin size={13} />}
-              </button>
+                {pinnedToAgent ? <Check className="lucide-inline text-accent" /> : pinModelUnavailable ? <Ban className="lucide-inline" /> : <Pin className="lucide-inline" />}
+              </Btn>
             )}
             {onSetDefault && (
-              <button
+              <Btn
                 type="button"
                 onClick={onSetDefault}
-                className="shrink-0 border-t border-border rounded-b-lg flex items-center justify-between gap-2 px-3 py-2 text-[12px] cursor-pointer bg-transparent border-x-0 border-b-0 text-muted hover:text-text hover:bg-bg-hover transition-colors"
+                className="w-full shrink-0 justify-between rounded-b-lg rounded-t-none border-x-0 border-b-0 px-3 py-2 text-[12px] text-muted"
               >
                 <span>{i18nT('components.modelEffortDropdown.set_default_for_new_sessions')}</span>
-                <Settings2 size={13} />
-              </button>
+                <Settings2 className="lucide-inline" />
+              </Btn>
             )}
           </div>
     </div>
+  )
+}
+
+/** First-use shortcut; the permanent visibility control lives in Settings. */
+export function ManageModelsFooter({ onManage }: { onManage: () => void }) {
+  return (
+    <Btn
+      type="button"
+      onClick={onManage}
+      data-model-picker-manage
+      data-option
+      aria-label={i18nT('components.modelEffortDropdown.manage_visible_models')}
+      className="w-full shrink-0 justify-between rounded-none border-x-0 border-b-0 px-3 py-2 text-[12px] text-muted"
+    >
+      <span className="flex items-center gap-2 text-left">
+        <Settings2 className="lucide-inline shrink-0" />
+        {i18nT('components.modelEffortDropdown.manage_visible_models')}
+      </span>
+      <span className="flex items-center gap-0.5 text-right text-[10px]">
+        {i18nT('components.modelEffortDropdown.manage_in_settings')}
+        <ChevronRight className="lucide-inline shrink-0" />
+      </span>
+    </Btn>
   )
 }

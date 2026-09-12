@@ -6851,12 +6851,12 @@
       "no_matches": "Keine Treffer"
     },
     "modelEffortDropdown": {
+      "manage_in_settings": "In Einstellungen verwalten",
+      "manage_visible_models": "Sichtbare Modelle verwalten",
       "default_for_agent": "Standardmodell für <agent/>",
       "filter_models": "Modelle filtern",
       "model_list": "Modellliste",
-      "models": "Modelle",
       "pin_model_unavailable": "<model/> wird derzeit nicht angeboten",
-      "reasoning": "Reasoning",
       "set_default_for_agent": "<model/> als Standardmodell für <agent/> festlegen",
       "set_default_for_new_sessions": "Globaler Standard für neue Sitzungen…",
       "type_to_filter": "Zum Filtern tippen…"
@@ -7292,6 +7292,10 @@
       "selected": "ausgewählt",
       "showing": "Angezeigt",
       "you": "Du"
+    },
+    "multiSelect": {
+      "deselect_all": "Auswahl aufheben",
+      "select_all": "Alle auswählen"
     },
     "searchableSelect": {
       "no_matches": "Keine Treffer",

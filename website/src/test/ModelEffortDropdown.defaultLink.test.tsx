@@ -56,6 +56,71 @@ function wrap(ui: React.ReactElement) {
   return render(<Provider store={store}><QueryClientProvider client={qc}>{ui}</QueryClientProvider></Provider>)
 }
 
+describe('ModelEffortDropdown — visible models shortcut', () => {
+  it('reports a visibility-config read failure and retries in place', () => {
+    const onRetryModelVisibility = vi.fn()
+    wrap(
+      <ModelEffortDropdown
+        {...baseProps}
+        modelVisibilityError
+        onRetryModelVisibility={onRetryModelVisibility}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load dashboard config.')
+    expect(screen.queryByRole('button', { name: 'Ask the agent' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetryModelVisibility).toHaveBeenCalledOnce()
+  })
+
+  it('is optional and opens management from between the list and effort controls', () => {
+    const onManageModels = vi.fn()
+    wrap(<ModelEffortDropdown {...baseProps} hasEffort onManageModels={onManageModels} />)
+    const button = screen.getByRole('button', { name: 'Manage visible models' })
+    expect(screen.getByRole('listbox').compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(button.compareDocumentPosition(screen.getByRole('slider')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(button)
+    expect(onManageModels).toHaveBeenCalledTimes(1)
+    expect(SETTINGS_REGISTRY.some(entry => entry.configKey === 'dashboard.model_picker_hidden_models')).toBe(true)
+  })
+
+  it('stays absent after its caller marks configuration complete', () => {
+    wrap(<ModelEffortDropdown {...baseProps} />)
+    expect(screen.queryByRole('button', { name: 'Manage visible models' })).not.toBeInTheDocument()
+  })
+
+  it('places the first-use shortcut between models and effort in keyboard order', async () => {
+    const onListKeyDown = vi.fn()
+    wrap(
+      <ModelEffortDropdown
+        {...baseProps}
+        hasEffort
+        onManageModels={vi.fn()}
+        onListKeyDown={onListKeyDown}
+      />,
+    )
+    const user = userEvent.setup()
+    const input = screen.getByPlaceholderText('Type to filter…')
+    const manage = screen.getByRole('button', { name: 'Manage visible models' })
+    const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    input.focus()
+    await user.tab()
+    expect(manage).toHaveFocus()
+    await user.tab()
+    expect(slider).toHaveFocus()
+
+    const options = screen.getAllByRole('option')
+    const last = options[options.length - 1]
+    last.focus()
+    fireEvent.keyDown(last, { key: 'ArrowDown' })
+    expect(manage).toHaveFocus()
+    fireEvent.keyDown(manage, { key: 'ArrowDown' })
+    expect(slider).toHaveFocus()
+    fireEvent.keyDown(manage, { key: 'ArrowUp' })
+    expect(last).toHaveFocus()
+    expect(onListKeyDown).not.toHaveBeenCalled()
+  })
+})
+
 describe('ModelEffortDropdown — global fallback link', () => {
   it('is absent when the call site passes no handler', () => {
     wrap(<ModelEffortDropdown {...baseProps} />)
@@ -136,6 +201,28 @@ describe('ModelEffortDropdown — per-agent default row', () => {
 })
 
 describe('ModelEffortDropdown — inline effort', () => {
+  it('caps the picker to the viewport and leaves the model list as the flexible scroller', () => {
+    const innerHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 320 })
+    try {
+      wrap(
+        <ModelEffortDropdown
+          {...baseProps}
+          anchorRect={{ ...baseProps.anchorRect, top: 300 } as DOMRect}
+          models={Array.from({ length: 20 }, (_, index) => ({ name: `model-${index}` }))}
+          hasEffort
+          onManageModels={vi.fn()}
+          onSetDefault={vi.fn()}
+        />,
+      )
+      expect(screen.getByRole('dialog')).toHaveStyle({ maxHeight: '288px' })
+      expect(screen.getByRole('dialog')).toHaveClass('flex', 'flex-col', 'overflow-hidden')
+      expect(screen.getByRole('listbox')).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto')
+    } finally {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: innerHeight })
+    }
+  })
+
   it('shows the configured default when the slot carries no override', () => {
     wrap(<ModelEffortDropdown {...baseProps} hasEffort currentEffort="" defaultEffort="high" />)
     expect(screen.getByText('Default · High')).toBeInTheDocument()

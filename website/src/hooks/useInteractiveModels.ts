@@ -27,10 +27,27 @@ export function filterInteractiveModels(
   return models.filter(model => model.name === 'auto' || kept.has(model.name) || !hidden.has(model.name))
 }
 
+export function useModelPickerHiddenModelsQuery() {
+  const query = useQuery({
+    queryKey: ['dashboardConfig'],
+    queryFn: () => api.dashboardConfig(),
+  })
+  return {
+    ...query,
+    data: normalizeHiddenModels(query.data?.model_picker_hidden_models),
+  }
+}
+
 export function useModelPickerHiddenModels(): string[] {
+  return useModelPickerHiddenModelsQuery().data
+}
+
+/** Keep the first-use prompt hidden until configuration is known. Opening
+ * Settings is not acknowledgement; only the server records a successful save. */
+export function useModelPickerConfigured(): boolean {
   const { data } = useQuery({
     queryKey: ['dashboardConfig'],
     queryFn: () => api.dashboardConfig(),
   })
-  return normalizeHiddenModels(data?.model_picker_hidden_models)
+  return data?.model_picker_configured !== false
 }

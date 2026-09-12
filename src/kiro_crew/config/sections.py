@@ -2933,6 +2933,16 @@ class DashboardConfig:
             "Click a suggested reply to send it instantly. Shift+Click to select multiple.",
         ),
     )
+    model_picker_configured: bool = field(
+        default=False,
+        metadata=_meta(
+            "Model Picker Visibility Saved",
+            "Internal marker set after the user saves the interactive model "
+            "picker visibility list. It lets the dashboard distinguish a "
+            "never-configured picker from one intentionally saved with no "
+            "hidden models.",
+        ),
+    )
     model_picker_hidden_models: list[str] = field(
         default_factory=list,
         metadata=_meta(

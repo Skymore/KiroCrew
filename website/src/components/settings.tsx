@@ -178,6 +178,7 @@ interface SettingsMultiSelectProps {
   options: MultiSelectOption[]
   selected: ReadonlySet<string>
   onToggle: (value: string, selected: boolean) => void
+  bulkActions?: ReadonlyArray<{ label: string; onSelect: () => void }>
   summary: string
   searchPlaceholder?: string
   disabled?: boolean
@@ -185,7 +186,7 @@ interface SettingsMultiSelectProps {
   settingId?: string
 }
 
-export function SettingsMultiSelect({ label, description, hint, options, selected, onToggle, summary, searchPlaceholder, disabled, configKey, settingId }: SettingsMultiSelectProps) {
+export function SettingsMultiSelect({ label, description, hint, options, selected, onToggle, bulkActions, summary, searchPlaceholder, disabled, configKey, settingId }: SettingsMultiSelectProps) {
   const controlId = React.useId()
   return (
     <SettingsField label={label} description={description} hint={hint} configKey={configKey} settingId={settingId} controlId={controlId}>
@@ -195,6 +196,7 @@ export function SettingsMultiSelect({ label, description, hint, options, selecte
         options={options}
         selected={selected}
         onToggle={onToggle}
+        bulkActions={bulkActions}
         summary={summary}
         searchPlaceholder={searchPlaceholder}
         disabled={disabled}
