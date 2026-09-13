@@ -59,7 +59,7 @@ const SLOT = 'chat-1-stacking'
  *  (z-[46]) and the mobile workspace panel (z-[47]) in ChatPage. */
 const SHELL_OVERLAY_FLOOR = 46
 
-function mount() {
+function mount(props: Partial<React.ComponentProps<typeof ChatPane>> = {}) {
   const store = configureStore({
     reducer: { dashboard: dashboardReducer, chat: chatReducer, notifications: notificationsReducer },
     preloadedState: {
@@ -78,7 +78,7 @@ function mount() {
     <Provider store={store}>
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <ChatPane slotKey={SLOT} />
+          <ChatPane slotKey={SLOT} {...props} />
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,
@@ -95,5 +95,37 @@ describe('ChatPane title row stacking', () => {
     const value = Number(z[0].replace(/\D/g, ''))
     expect(value).toBeGreaterThan(2) // above the pane's z-[1] / z-[2] message chrome
     expect(value).toBeLessThan(SHELL_OVERLAY_FLOOR)
+  })
+})
+
+/* In split view the single-chat title row is gone, and the shell's sessions
+ * toggle keeps standing at the surface's top-left. The pane that owns that
+ * corner takes it over through `leading`: on desktop it clears the shell's
+ * stationary button (reserved column + the same hairline the title row
+ * draws), on mobile it renders the toggle inline. Any other pane, and a pane
+ * outside split view, starts its row at its own inset. */
+describe('ChatPane title row leading edge', () => {
+  const row = (container: HTMLElement) => container.querySelector('.panel-toolbar') as HTMLElement
+
+  it('starts at its own inset with no leading', () => {
+    const { container } = mount()
+    expect(row(container).className).toContain('pl-3')
+    expect(row(container).querySelector('[data-pane-leading-divider]')).toBeNull()
+  })
+
+  it('reserves the shell toggle column and draws the divider for inset', () => {
+    const { container } = mount({ leading: { inset: true } })
+    expect(row(container).className).toContain('pl-[56px]')
+    expect(row(container).className).not.toMatch(/\bpl-3\b/)
+    expect(row(container).querySelector('[data-pane-leading-divider]')).not.toBeNull()
+  })
+
+  it('renders an inline leading control ahead of the title', () => {
+    const { container, getByRole } = mount({ leading: { control: <button type="button" aria-label="toggle sessions" /> } })
+    const control = getByRole('button', { name: 'toggle sessions' })
+    expect(row(container).contains(control)).toBe(true)
+    // Ahead of the title group, so it reads as the row's first element.
+    expect(control.compareDocumentPosition(row(container).querySelector('.flex-1') as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(row(container).querySelector('[data-pane-leading-divider]')).toBeNull()
   })
 })

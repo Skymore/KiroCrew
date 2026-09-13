@@ -13,6 +13,10 @@ import ChatInput, { type ComposerBusyMode } from './ChatInput'
 import ErrorNotice from './ErrorNotice'
 import { Btn } from './ui'
 import ChatDropOverlay, { useChatFileDrop } from './ChatDropOverlay'
+
+/** What the top-left split pane does about the shell's sidebar toggle — see
+ *  ChatPane's `leading` prop. */
+export type PaneLeading = { inset?: boolean; control?: React.ReactNode }
 import PendingQuestionCard from './PendingQuestionCard'
 import PendingDecisionCard from './PendingDecisionCard'
 import QueueStack, { SubagentDeliveryProgress, splitPaneMessages } from './QueueStack'
@@ -84,6 +88,7 @@ export default function ChatPane({
   hideEmptyHint,
   openSideChat,
   hostsPanelControls,
+  leading,
   busyMode = 'split',
 }: {
   slotKey: string
@@ -100,6 +105,13 @@ export default function ChatPane({
    *  the agent picker is not offered at all, instead of offering a control
    *  whose every selection the backend 409s. */
   agentLocked?: boolean
+  /** Split view: this pane owns the surface's top-left corner, where the shell
+   *  keeps the sessions-sidebar toggle. `inset` reserves that toggle's column
+   *  (desktop: the toggle is the shell's absolutely positioned button, and the
+   *  header would otherwise run under it); `control` renders the toggle inline
+   *  (mobile, where the single-chat title row that normally carries it is not
+   *  rendered in split view). Undefined = the header starts at its own inset. */
+  leading?: PaneLeading
   /** Embedded-in-a-page mode (member DM threads): the HOST renders the
    *  identity header, so the pane's own title bar and its card chrome
    *  (border, rounded corners) would duplicate it. Split-view panes keep
@@ -1173,7 +1185,15 @@ export default function ChatPane({
             tab strip under the pane titles. This row is flex-flow chrome, not
             an overlay, and stays below every shell layer. */}
         {!frameless && (
-        <div className="panel-toolbar relative z-10 flex items-center gap-2 pl-3 pr-2 bg-bg shrink-0">
+        <div className={`panel-toolbar relative z-10 flex items-center gap-2 pr-2 bg-bg shrink-0 transition-[padding-left] duration-[240ms] [transition-timing-function:cubic-bezier(.32,.72,0,1)] ${leading?.inset ? 'pl-[56px]' : 'pl-3'}`}>
+          {/* Divider between the shell's toggle and this title, as on the
+              single-chat row. The toggle sits at container x 8 and the pane
+              starts 8px left of the container (the row's own left-[52px] is
+              container 44), so on the compact token the 24px toggle spans pane
+              x 16..40: divider at 48, title at 56, 8px each side. Absolute so
+              it never joins the row's flex layout. */}
+          {leading?.inset && <span aria-hidden="true" data-pane-leading-divider className="absolute left-[48px] top-1/2 -translate-y-1/2 w-px h-5 bg-border" />}
+          {leading?.control}
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className={`w-2 h-2 rounded-full shrink-0 ${running ? 'bg-ok animate-pulse' : 'bg-accent'}`} />
             <span className="text-[13px] font-semibold text-text-strong truncate min-w-0">{title}</span>
