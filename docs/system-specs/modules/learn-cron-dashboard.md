@@ -1278,6 +1278,146 @@ MERGES two requeued steers keeps one `sendId` and the other send keeps the
 over-keep default. Pinned by the requeue sendId tests in
 `test_steer_requeue.py`.
 
+### Steering a QUEUED message (`POST /api/chat/slots/{slot}/queue/{queue_id}/steer`)
+
+A queue card has two "act on it now" controls with opposite costs. The lightning
+button (`send_now`) is `/interrupt` (above): stop the running turn, start this
+entry as the next turn. The target button (`steer_now`) is this route: hand the
+entry's text to the turn ALREADY running, which
+reads it at its next inference boundary and keeps going — the queued-message
+form of the composer steer, and the gesture Codex's desktop app exposes as
+Cmd+Enter on a queued message.
+
+**Take, then steer — in that order.** `api_chat_slot_queue_steer` removes the
+entry from the queue (`_ChatSlot.queue_take_by_id`, which returns a
+`TakenQueueEntry`: the entry object plus the ids of its former neighbours)
+BEFORE it awaits `steer_into_running_turn`. Two races make the order
+load-bearing: the dequeue loop cannot start the entry as its own turn while the
+steer RPC is in flight (the same text twice), and because the steer path demotes
+to the queue when the turn cannot take a steer, steering first would leave the
+original entry and the demoted copy queued side by side.
+
+**Admission is re-asserted first, exactly as the drain does.** Between the take
+and the steer the route runs the same check `chat_runner._drop_stale_admissions`
+runs before starting an entry: `containment_snapshot` now against the entry's
+admission stamp, via `newly_held_constraints`. A constraint the entry was never
+admitted under (the slot gained a channel link or a mirror, moved workspace,
+went unattended…) DROPS it — not a put-back, which would only defer the same
+drop to the next dequeue — with the drain's own retraction (`queue_pop`),
+transcript notice and SEL record (`audit_queued_drop`), and answers 409
+`queue_containment_changed`. Steering is a second way for a queued entry to
+reach the agent, so it clears the same gate; without this the steer would run
+the text under a containment its admission never authorized. Outcomes past the
+gate:
+
+- `STEER_STEERED` — the text is in the turn. The queued placeholder row is
+  retired (`_remove_queued_by_id`) and `queue_pop` is broadcast — the SAME frame
+  the drain emits when it consumes an entry, so every client retires the card
+  through the reducer it already has. The steer row itself is persisted and
+  echoed by `steer_into_running_turn` exactly as a composer steer's is, and the
+  entry's `meta.sendId` AND its attachment lists (`attachment_meta`) are threaded
+  through, so the client that queued it can still match the row by identity and
+  the row renders its attachment cards. Response `{ok, steered: true}`.
+- `STEER_REQUEUED` — the turn ended during the await and its teardown requeued
+  the text as a NEW entry (`queue_push` draws that card). Only the OLD
+  placeholder is retired here; the old entry is NOT put back beside the new one.
+  Response `{ok, queued: true}`.
+- unavailable (no steer-capable client, a stage gap, an identical steer already
+  pending) — nothing was written anywhere, so the SAME entry object goes back in
+  its relative place (`queue_restore`): before the entry that followed it if that
+  is still queued, else right after the one that preceded it, else at the
+  original index clamped. Anchors rather than the index, because the queue can
+  move under the await — an earlier card cancelled, a later one appended — and a
+  blind index would land the entry ahead of or behind entries it never overtook.
+  Same id, same meta; the card never moved. Response
+  `{ok, steered: false, queued: true, queue_id}`.
+
+404 `queue_item_not_found` when the entry is already gone (drained or cancelled
+meanwhile) — nothing is sent, because the text is already running or was
+withdrawn. 403 `app_steer_forbidden` for an app-authenticated request, decided
+BEFORE the take: steering is human-only here exactly as in `api_chat`'s steer
+branch (`body.get("steer") and not request_app`), because a steer persists as a
+`user` row and a requeued one as an entry with human provenance —
+`_requeue_unconsumed_steers` derives that provenance from "every caller refuses
+apps", so an app owning its slot (which clears the cross-app check) must be
+refused here or it could inject text into a human-started turn under provenance
+its admission never had. 409 `not_steerable` for an entry that is not a plain
+user message: a recovery continuation (`kind`) or a retry payload carrying
+settlement callbacks belongs to the turn machinery, and steering one would
+acknowledge work that did not happen; the entry is put back untouched. All three
+refusals come BEFORE any await. Every decision is a `queue_steer` SEL permission
+event: `allowed` (with the outcome) for the two delivered cases, `noop` for the
+put-back, `denied` for `app_forbidden` and `not_steerable`; the containment drop
+is audited by `audit_queued_drop` like the drain's.
+
+**Steer rows carry attachment lists.** `steer_into_running_turn` takes an
+optional `attachments` (the `attachment_meta` shape, `{files, dirs}`), filters it
+at entry to the known keys with non-empty lists, and unions the result onto the
+persisted row's meta and the `steer_push` payload; the `steer_push` handler
+copies well-formed string lists into the row it appends. Both the composer steer
+(`api_chat`, from the send's `meta`) and the queued steer (from the entry's
+`meta`) pass them, so `[attached_file N]` markers resolve against the list on
+the live echo and after a reload alike instead of the whitespace-bounded
+fallback that reads `/tmp/My` for `/tmp/My Report.pdf`. The lists also survive
+the REQUEUE path: they are recorded in `slot._steer_attachments`, a third ledger
+kept in lockstep with `_steer_delivery_ids` / `_steer_send_ids` (same key, same
+four removal sites: the unwind, the terminal persisting tail, the hard-kill
+discard, the requeue), and `_requeue_unconsumed_steers` moves them onto the
+replacement entry's meta so the drain's union puts them on the row it writes.
+
+**Client contract is deliberately NOT optimistic.** `useQueuedMessageActions.onSteer`
+latches the card (`pendingIds`) and makes the one call. On `steered` it
+dispatches `cancelQueuedMessage` locally to save the round trip (the `queue_pop`
+echo is then a no-op); on `queued` and on any rejection it changes nothing — the
+server either still holds the same entry or has broadcast the frames that
+describe what replaced it. There is no composer restore on this path: unlike
+cancel, the server never lets go of the text without delivering it or putting
+it back. `onSteerFront` steers the front VISIBLE card (hidden system deliveries
+and recovery continuations are never candidates).
+
+**The card's action row holds two controls.** `QueueStack` builds each card's
+actions as data (`CardAction`: steer, send now, edit, run sooner / run later
+when expanded with 2+ cards, cancel) and renders the FIRST inline plus one
+overflow menu (`QueueCardOverflow`, the `CronRowActions` pattern) holding the
+rest — `max-two-buttons-per-row`. With two actions or fewer (the side chat's
+edit + cancel) both stay inline and no menu is rendered. What stays inline is
+the list's first entry: Steer now when the host offers it, else Send now, else
+Edit. The trigger and the menu content stop click, pointerdown and keydown
+propagation, because the stack's container toggles expand/collapse on click and
+Enter/Space and both sit inside it (menu items through React's portal
+bubbling). The trigger goes dark with the card's `pendingIds` latch, and every
+item carries the action's own `disabled`.
+
+**Gestures.** With the busy split available (running, not stopping, steer path
+present, not `steer-only`, `sendOnEnter === 'enter'`): Cmd/Ctrl+Enter on a
+NON-empty composer keeps its existing meaning (one-off flip of the split
+button's mode, #4608); on an EMPTY composer with a card queued it calls
+`onSteerFront`, and falls through to the ordinary key handling when nothing is
+queued. The gesture is advertised in two places, because neither the card
+(hover) nor the split menu (click) is visible at the moment of typing: the
+composer placeholder reads `{{chord}} steers the front queued message now · or
+keep typing…` exactly when the gesture is live (`queuedCount > 0`), and the
+FRONT card's steer tooltip carries the chord; other cards' tooltips do not,
+because the key does not act on them.
+
+**Queue list order.** The expanded stack lists cards top-down in run order
+(index 0 on top), so `Run sooner` (↑, in the overflow menu) moves a card up and
+`Run later` (↓) down, and the collapse
+chevron sits on the bottom card (the stack folds down onto the composer edge).
+The collapsed geometry is unchanged: the front card fused to the composer, the
+rest peeking above it. That means the front card has to travel to the TOP when
+the list opens, past the peeks; springing everything at once made it cross them
+mid-flight and drop under them when its z-layer flipped. It therefore keeps the
+top layer in BOTH states and rises first, and the other cards hold their peek
+positions for `LIFT_STAGGER_S` before dropping into their slots beneath it;
+collapse runs in reverse so it lands back on top. The stagger applies only on
+the render that flips `expanded` (read off `prevExpanded`), so a card that is
+drained or added mid-way never pauses before moving. (The original stack listed
+bottom-up precisely to avoid the crossing; that read as the queue being in
+reverse.) Pinned by `test_queue_steer.py`,
+`useQueuedMessageActions.steer.test.tsx`, `ChatInput.queuedSteer.test.tsx` and
+the order/steer describes in `QueueStack.test.tsx`.
+
 ### Wait countdown and early end (`/api/session-keepalive` as a control channel)
 
 While the MCP `wait` tool sleeps, the transcript shows a live countdown and an

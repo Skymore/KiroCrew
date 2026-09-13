@@ -1089,6 +1089,8 @@ export default function ChatPane({
   const {
     onCancel: onCancelQueued,
     onInterrupt: onInterruptQueued,
+    onSteer: onSteerQueued,
+    onSteerFront: onSteerFrontQueued,
     onEdit: onEditQueued,
     onReorder: onReorderQueued,
     pendingIds: queuePendingIds,
@@ -1329,7 +1331,7 @@ export default function ChatPane({
             cancellable — hiding real state is worse than showing a card the
             surface did not intend. */}
         {queuedMessages.length > 0 && (
-          <QueueStack messages={queuedMessages} onCancel={onCancelQueued} onInterrupt={onInterruptQueued} onEdit={onEditQueued} onReorder={onReorderQueued} pendingIds={queuePendingIds} />
+          <QueueStack messages={queuedMessages} onCancel={onCancelQueued} onInterrupt={onInterruptQueued} onSteer={onSteerQueued} onEdit={onEditQueued} onReorder={onReorderQueued} pendingIds={queuePendingIds} />
         )}
 
         {/* The pending ask_question card renders per pane: in split mode the
@@ -1440,6 +1442,8 @@ export default function ChatPane({
           // `steer-only` host gets a plain send that steers.
           canSteer={busy}
           onSteer={doSteer}
+          onSteerFrontQueued={onSteerFrontQueued}
+          queuedCount={queuedMessages.length}
           busyMode={busyMode}
           autoFocusKey={slotKey}
           agentName={paneAgentName}

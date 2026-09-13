@@ -31,11 +31,18 @@ export interface QueuedSendRecord {
  *  three small strings bounded by queued sends per tab session. */
 export const queuedSendStash = new Map<string, QueuedSendRecord>()
 
-/** The four queue-card callbacks `QueueStack` takes, plus the in-flight set it
+/** The queue-card callbacks `QueueStack` takes, plus the in-flight set it
  *  disables its controls from. */
 export interface QueuedMessageActions {
   onCancel: (queueId: string) => void
   onInterrupt: (queueId: string) => void
+  /** Steer THIS entry into the running turn without interrupting it. */
+  onSteer: (queueId: string) => void
+  /** Steer the FRONT visible card (the one that would run next) into the running
+   *  turn. The ⌘↩ / Ctrl+Enter gesture on an empty composer: "the thing I already
+   *  queued — act on it now". Returns false when there is no card to steer, so the
+   *  key handler can fall through to its ordinary behaviour. */
+  onSteerFront: () => boolean
   onEdit: (queueId: string, content: string) => void
   onReorder: (queueId: string, direction: 'next' | 'later') => void
   /** Feed straight to `QueueStack`'s `pendingIds`. */
@@ -226,6 +233,47 @@ export function useQueuedMessageActions({
     run(queueId, api.editQueuedMessage(slot, queueId, trimmed))
   }, [slot, dispatch, run])
 
+  // Steer a queued entry into the RUNNING turn (no interrupt) — the
+  // non-interrupting sibling of onInterrupt. One server call: the route takes
+  // the entry off the queue BEFORE it awaits the steer (so the drain cannot start
+  // it meanwhile) and puts the SAME entry back, same id and position, when the
+  // turn cannot take a steer. So there is nothing optimistic to do here and
+  // nothing to roll back:
+  //   - `steered`   -> the card is retired; `queue_pop` from the server does it for
+  //                    every client, the local dispatch just saves the round trip.
+  //   - `queued`    -> the entry stayed where it was (or, if the turn ended
+  //                    mid-await, its teardown re-queued the text as a NEW entry
+  //                    and `queue_push` draws that card). Leave the store to the
+  //                    server's frames either way.
+  //   - rejected    -> 404 (drained or cancelled meanwhile: the text is already
+  //                    running or was withdrawn, nothing to steer) or 409 (not a
+  //                    user entry). The card, if still there, is still the same
+  //                    card, so release it for another try.
+  // The text never needs handing back to the composer: the server never lets go
+  // of it without either delivering it or putting it back.
+  const onSteer = useCallback((queueId: string) => {
+    if (!slot) return
+    markPending(queueId, true)
+    api.steerQueuedMessage(slot, queueId).then(
+      res => {
+        if (res.steered) {
+          queuedSendStash.delete(queueId)
+          dispatch(cancelQueuedMessage({ slot, queue_id: queueId }))
+        }
+        markPending(queueId, false)
+      },
+      () => markPending(queueId, false),
+    )
+  }, [slot, dispatch, markPending])
+
+  const onSteerFront = useCallback((): boolean => {
+    const front = visibleQueuedRef.current[0]
+    const id = front ? queueIdOf(front) : undefined
+    if (!id) return false
+    onSteer(id)
+    return true
+  }, [onSteer])
+
   const onReorder = useCallback((queueId: string, direction: 'next' | 'later') => {
     if (!slot) return
     const fullIds = allQueuedRef.current.map(queueIdOf).filter((id): id is string => !!id)
@@ -252,7 +300,7 @@ export function useQueuedMessageActions({
   }, [slot])
 
   return useMemo(
-    () => ({ onCancel, onInterrupt, onEdit, onReorder, pendingIds }),
-    [onCancel, onInterrupt, onEdit, onReorder, pendingIds],
+    () => ({ onCancel, onInterrupt, onSteer, onSteerFront, onEdit, onReorder, pendingIds }),
+    [onCancel, onInterrupt, onSteer, onSteerFront, onEdit, onReorder, pendingIds],
   )
 }

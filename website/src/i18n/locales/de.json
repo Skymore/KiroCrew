@@ -5839,7 +5839,8 @@
       "session_control_ready": "Bereit",
       "session_control_chip_label": "{{label}} — {{detail}}",
       "agent_inherited_default": "Diese Sitzung folgt dem Standard-Agenten ({{name}}). Sie hat keinen eigenen Agenten, ändert sich also mit dem Standard. Zum Anheften klicken.",
-      "model_inherited_default": "Diese Sitzung läuft auf dem Standardmodell ({{name}}). Sie hat kein eigenes Modell, ändert sich also, wenn sich der Standard ändert. Klicken, um eines festzulegen."
+      "model_inherited_default": "Diese Sitzung läuft auf dem Standardmodell ({{name}}). Sie hat kein eigenes Modell, ändert sich also, wenn sich der Standard ändert. Klicken, um eines festzulegen.",
+      "queued_steer_placeholder": "{{chord}} steuert die erste Nachricht in der Warteschlange jetzt · oder weiterschreiben…"
     },
     "chatPane": {
       "agent_list": "Agenten-Liste",
@@ -7158,7 +7159,10 @@
       "save_edit": "Änderung speichern",
       "send_now": "Jetzt senden",
       "sub_agent_result_one": "{{count}} Subagenten-Ergebnis",
-      "sub_agent_result_other": "{{count}} Subagenten-Ergebnisse"
+      "sub_agent_result_other": "{{count}} Subagenten-Ergebnisse",
+      "steer_now": "Jetzt steuern",
+      "steer_this_into_the_running_turn_now_without_interrupting": "Dies jetzt in den laufenden Zug steuern (ohne ihn zu unterbrechen)",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "Dies jetzt in den laufenden Zug steuern (ohne ihn zu unterbrechen) · {{chord}}"
     },
     "readingWidthToggle": {
       "label_full": "V",

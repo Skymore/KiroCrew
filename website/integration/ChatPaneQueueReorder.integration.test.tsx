@@ -82,9 +82,12 @@ describe('ChatPane - reorder submits the complete queue order', () => {
     })
     await user.click(container.querySelector('[role="button"][aria-expanded]')!)
 
-    // Move the second visible card (q2) one step sooner (swap with q1).
-    const sooner = await screen.findAllByLabelText('Run sooner')
-    await user.click(sooner[1])
+    // Move the second visible card (q2) one step sooner (swap with q1). The
+    // reorder actions live in each card's overflow menu (the row keeps two
+    // controls); Radix opens on keyboard in jsdom.
+    const triggers = await screen.findAllByLabelText('More actions')
+    await user.type(triggers[1], '{Enter}')
+    await user.click(await screen.findByRole('menuitem', { name: 'Run sooner' }))
 
     await waitFor(() => expect(submitted).not.toBeNull())
     // Full order submitted: sys1 keeps its slot between the swapped pair's

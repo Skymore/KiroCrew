@@ -64,3 +64,35 @@ describe('api.endWait', () => {
     expect(url).toContain('/api/chat/slots/slack%3AC0123%2F1700.5/end-wait')
   })
 })
+
+// The non-interrupting sibling of /interrupt: the queued entry is injected into
+// the running turn. The route is addressed by queue id (never by content), and
+// the response shape is read by the queue hook, so both are pinned here.
+describe('api.steerQueuedMessage', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, steered: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
+
+  afterEach(() => { fetchSpy.mockRestore() })
+
+  it('POSTs to /queue/{id}/steer and returns the receipt', async () => {
+    const res = await api.steerQueuedMessage('slot-1', 'q42')
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/api/chat/slots/slot-1/queue/q42/steer')
+    expect(init.method).toBe('POST')
+    expect(res).toEqual({ ok: true, steered: true })
+  })
+
+  it('encodes both the slot key and the queue id', async () => {
+    await api.steerQueuedMessage('slack:C0123/1700.5', 'a/b')
+    const [url] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/api/chat/slots/slack%3AC0123%2F1700.5/queue/a%2Fb/steer')
+  })
+})

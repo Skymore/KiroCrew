@@ -50,7 +50,7 @@ from kiro_crew.dashboard.session_pulse_counter import increment_user_session_cou
 from kiro_crew.dashboard.side_state import SideState
 from kiro_crew.dashboard.slot_buffers import SlotBufferCoordinator
 from kiro_crew.dashboard.slot_projection import SlotProjection
-from kiro_crew.dashboard.slot_queue_repository import SlotQueueRepository
+from kiro_crew.dashboard.slot_queue_repository import SlotQueueRepository, TakenQueueEntry
 from kiro_crew.dashboard.slot_registry import SlotRegistry
 from kiro_crew.dashboard.system_notices import is_system_notice
 from kiro_crew.dashboard.websocket_hub import WebSocketHub
@@ -3615,6 +3615,7 @@ class _ChatSlot:
         "_pending_steers",
         "_steer_delivery_ids",
         "_steer_send_ids",
+        "_steer_attachments",
         "_wait_state",
         "_end_wait_request",
         "_wait_last_ping",
@@ -4308,6 +4309,13 @@ class _ChatSlot:
         # carries `meta.sendId` like an accepted steer's row does. A steer
         # that persists its own row stamps the id directly and drops this entry.
         self._steer_send_ids: dict[str, str] = {}
+        # The attachment lists (`attachment_meta` shape) of an in-flight steer that
+        # carried any, keyed and kept in LOCKSTEP exactly like `_steer_send_ids`,
+        # for the same single reader: the requeue moves them onto the queue
+        # entry's meta so a steer the teardown degrades to a queue card still
+        # renders its attachment cards when the drain writes the row. A steer that
+        # persists its own row stamps the lists directly and drops this entry.
+        self._steer_attachments: dict[str, dict[str, list[str]]] = {}
         # In-flight `wait` tool sleep, as reported by the tool's own keepalive
         # ping: {"wait_id": str, "seconds": int, "deadline_ts": float}. The
         # deadline is on the dashboard's clock (see api_session_keepalive) so
@@ -4899,6 +4907,12 @@ class _ChatSlot:
 
     def queue_remove_by_id(self, queue_id: str) -> str | None:
         return self._queue_repository.queue_remove_by_id(self, queue_id)
+
+    def queue_take_by_id(self, queue_id: str) -> TakenQueueEntry | None:
+        return self._queue_repository.queue_take_by_id(self, queue_id)
+
+    def queue_restore(self, taken: TakenQueueEntry) -> None:
+        self._queue_repository.queue_restore(self, taken)
 
     def queue_edit_by_id(
         self,

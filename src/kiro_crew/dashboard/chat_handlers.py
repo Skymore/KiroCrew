@@ -613,6 +613,10 @@ async def api_chat(request: web.Request) -> web.StreamResponse:
                 slot,
                 message,
                 send_id=user_meta.get("sendId") if user_meta else None,
+                # Same lists a dispatched or queued send persists on its row, so a
+                # steer carrying `[attached_file N]` markers renders its
+                # attachment cards instead of a whitespace-bounded path read.
+                attachments=attachment_meta(user_meta),
             )
             if outcome == STEER_STEERED:
                 return web.json_response({"ok": True, "steered": True})
@@ -3912,6 +3916,7 @@ async def stop_slot_turn(
             # kill discards the text, so there is no requeued entry left to carry
             # the client's send id onto.
             slot._steer_send_ids.pop(_discarded, None)
+            slot._steer_attachments.pop(_discarded, None)
         slot._pending_steers.clear()
         state.push_slots_update()
         logger.info("Stop (force): hard-killing session for slot %s", name)
@@ -4546,6 +4551,174 @@ async def api_chat_slot_queue_cancel(request: web.Request) -> web.Response:
         metadata={"queue_id": queue_id, "slot": name},
     )
     return web.json_response({"ok": True, "content": _redacted})
+
+
+async def api_chat_slot_queue_steer(request: web.Request) -> web.Response:
+    """POST /api/chat/slots/{slot}/queue/{queue_id}/steer — steer a queued
+    message into the RUNNING turn, without interrupting it.
+
+    The non-interrupting sibling of ``/interrupt``: that one stops the turn and
+    starts the entry as the next turn; this one hands the entry's text to the
+    turn already running, which reads it at its next inference boundary and
+    keeps going (``steer_into_running_turn``).
+
+    Take-then-steer, in that order. The entry leaves the queue BEFORE the steer
+    RPC is awaited, so the dequeue loop cannot start it as its own turn while
+    the write is in flight -- the same text twice. And because the steer path
+    demotes to the queue when the turn cannot accept a steer, steering FIRST
+    would leave the original entry and the demoted copy queued side by side.
+
+    Between the take and the steer the entry's admission is re-asserted the way
+    the drain re-asserts it before starting an entry: a containment constraint
+    the entry was never admitted under (``newly_held_constraints``) drops it,
+    with the drain's retraction, transcript notice and SEL record, and answers
+    409 ``queue_containment_changed``. Steering is a second way for a queued
+    entry to reach the agent, so it clears the same gate.
+
+    Outcomes:
+    - ``STEER_STEERED``: the text is in the turn; the queued placeholder row is
+      retired and ``queue_pop`` tells every client the card is gone. The steer
+      row itself is persisted and broadcast by ``steer_into_running_turn``,
+      carrying the entry's ``sendId`` and attachment lists.
+    - ``STEER_REQUEUED``: the turn ended during the await and its teardown
+      requeued the text as a NEW entry (``queue_push`` draws that card). Only
+      the old placeholder is retired here.
+    - unavailable (no steer-capable client, a stage gap, an identical steer
+      already pending): the SAME entry goes back in its relative place -- before
+      the entry that followed it if that is still queued, since the queue may
+      have moved under the await -- same id, same meta, and the response says
+      ``queued``. The card never moved.
+
+    404 when the entry is already gone (drained or cancelled meanwhile): nothing
+    is sent, because the text is already running or was withdrawn. 403
+    ``app_steer_forbidden`` for an app-authenticated request, before the take:
+    steering is human-only here as in ``api_chat``, because a steer persists with
+    human provenance. 409 ``not_steerable`` for an entry that is not a plain user
+    message: automation entries (recovery continuations, retry payloads with
+    settlement callbacks) are the turn machinery's, not the user's, and steering
+    one would acknowledge work that did not happen. Every decision -- allowed,
+    noop, denied -- is a ``queue_steer`` SEL permission event.
+    """
+    state: DashboardState = request.app["state"]
+    name = request.match_info["slot"]
+    queue_id = request.match_info["queue_id"]
+    slot = state._slots.get(name)
+    if not slot:
+        return _slot_not_found()
+    denied = _deny_cross_app_slot_access(request, slot, name, "slot_queue_steer")
+    if denied is not None:
+        return denied
+
+    def _audit(outcome: str, **extra: Any) -> None:
+        sel().log_tool_invocation(
+            session_key=f"dashboard:{name}",
+            agent="kirocrew",
+            source="dashboard",
+            tool_name="queue_steer",
+            tool_kind="permission",
+            outcome=outcome,
+            metadata={"queue_id": queue_id, "slot": name, **extra},
+        )
+
+    # Steering is human-only, exactly as the composer's steer branch in
+    # `api_chat` is (`body.get("steer") and not request_app`): a steer persists
+    # as a `user` row and, when the teardown requeues it, as an entry with
+    # human provenance (`_requeue_unconsumed_steers` derives that from "every
+    # caller refuses apps"). An app that owns its slot clears the cross-app
+    # check above, so it needs its own refusal here -- BEFORE the take, so a
+    # refused request leaves the queue untouched -- or it could inject text
+    # into a human-started turn under provenance its admission never had.
+    request_app = request.get("app", "")
+    if request_app:
+        _audit("denied", reason="app_forbidden", caller=str(request_app))
+        return web.json_response(
+            {"error": "apps cannot steer a queued message", "code": "app_steer_forbidden"},
+            status=403,
+        )
+
+    taken = slot.queue_take_by_id(queue_id)
+    if taken is None:
+        return web.json_response(
+            {"error": "queue item not found", "code": "queue_item_not_found"}, status=404
+        )
+    entry = taken.entry
+
+    if entry.get("kind") or "_on_consumed" in entry or "_on_irreversibly_consumed" in entry:
+        slot.queue_restore(taken)
+        _audit("denied", reason="not_steerable", kind=str(entry.get("kind") or ""))
+        return web.json_response(
+            {"error": "not a user message", "code": "not_steerable"}, status=409
+        )
+
+    # Re-assert the entry's admission-time containment, exactly as the drain does
+    # before it starts an entry (`chat_runner._drop_stale_admissions`). The entry was
+    # admitted under the constraints that held when it was queued; a workspace
+    # or audience that changed since would let it run under a containment its
+    # admission never authorized. Same outcome as the drain's, too: the entry is
+    # DROPPED, not put back -- a put-back would only defer the same drop to the
+    # next dequeue -- with the same retraction, transcript notice and SEL record.
+    # circular import: session_control imports this package's modules at module level.
+    from kiro_crew.dashboard import session_control as _sc
+
+    _now = _sc.containment_snapshot(state, slot, on_probe_failure=True)
+    _changed = _sc.newly_held_constraints(
+        _now, entry.get("meta"), directive_user_origin=entry.get("_directive_user_origin") is True
+    )
+    if _changed:
+        _remove_queued_by_id(slot.messages, queue_id)
+        slot.invalidate_source_links()
+        state.broadcast_ws("queue_pop", {"slot": name, "content": "", "queue_id": queue_id})
+        slot.append(
+            "notice",
+            "⚠️ Queued message dropped: "
+            + _sc.describe_containment_change(
+                _changed, mirror_unverified=bool(_now.get("mirror_unverified"))
+            )
+            + " after it was queued, so the authorization that admitted it no longer holds.",
+            "msg msg-info",
+        )
+        state.push_slots_update()
+        _sc.audit_queued_drop(slot, queue_id, _changed)
+        return web.json_response(
+            {
+                "error": "containment changed since the message was queued",
+                "code": "queue_containment_changed",
+            },
+            status=409,
+        )
+
+    content = entry.get("content") or ""
+    meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else None
+    # The queued send's own correlation id rides onto the steer row, exactly as a
+    # composer steer's would, so the client that queued it can still match the
+    # row by identity rather than by text -- and so do its attachment lists, so
+    # the row renders attachment cards instead of re-parsing marker text.
+    send_id = meta.get("sendId") if meta else None
+
+    outcome = await steer_into_running_turn(
+        state,
+        slot,
+        content,
+        send_id=send_id if isinstance(send_id, str) else None,
+        attachments=attachment_meta(meta),
+    )
+
+    if outcome in (STEER_STEERED, STEER_REQUEUED):
+        _remove_queued_by_id(slot.messages, queue_id)
+        slot.invalidate_source_links()
+        state.broadcast_ws("queue_pop", {"slot": name, "content": "", "queue_id": queue_id})
+        state.push_slots_update()
+        _audit("allowed", result=outcome)
+        if outcome == STEER_STEERED:
+            return web.json_response({"ok": True, "steered": True})
+        return web.json_response({"ok": True, "queued": True})
+
+    # Unavailable: nothing was written anywhere, so the entry goes back verbatim,
+    # in its relative place (before the entry that followed it if that is still
+    # queued -- the queue may have moved under the await).
+    slot.queue_restore(taken)
+    _audit("noop", result=outcome)
+    return web.json_response({"ok": True, "steered": False, "queued": True, "queue_id": queue_id})
 
 
 async def api_chat_slot_queue_edit(request: web.Request) -> web.Response:

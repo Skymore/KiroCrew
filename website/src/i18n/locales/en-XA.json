@@ -5560,6 +5560,7 @@
       "queue_run_after_the_current_work_finishes_desc": "[Ŕùñ àƒţèŕ ţĥè çùŕŕèñţ ẁøŕķ ƒìñìşĥèş ··················]",
       "alt_action_hint_queues": "[{{chord}} ǫùèùèş ţĥìş ɱèşşàğè ìñşţèàð ····················]",
       "alt_action_hint_steers": "[{{chord}} şţèèŕş ẁìţĥ ţĥìş ɱèşşàğè ìñşţèàð ·················]",
+      "queued_steer_placeholder": "[{{chord}} şţèèŕş ţĥè ƒŕøñţ ǫùèùèð ɱèşşàğè ñøẁ · øŕ ķèèþ ţýþìñğ… ···················]",
       "steer_act_on_this_right_away_desc": "[Àçţ øñ ţĥìş ŕìğĥţ àẁàý ···············]",
       "finishing": "[Ƒìñìşĥìñğ… ···············]",
       "keep_holding_to_record": "[Ķèèþ ĥøĺðìñğ ţø ŕèçøŕð ···············]",
@@ -6625,7 +6626,10 @@
       "hidden_attachments_one": "[+{{count}} àţţàçĥɱèñţ ···········]",
       "hidden_attachments_other": "[+{{count}} àţţàçĥɱèñţş ············]",
       "hidden_lines_one": "[+{{count}} ĺìñè ·········]",
-      "hidden_lines_other": "[+{{count}} ĺìñèş ···········]"
+      "hidden_lines_other": "[+{{count}} ĺìñèş ···········]",
+      "steer_now": "[Şţèèŕ ñøẁ ··············]",
+      "steer_this_into_the_running_turn_now_without_interrupting": "[Şţèèŕ ţĥìş ìñţø ţĥè ŕùññìñğ ţùŕñ ñøẁ (ẁìţĥøùţ ìñţèŕŕùþţìñğ ìţ) ······················]",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "[Şţèèŕ ţĥìş ìñţø ţĥè ŕùññìñğ ţùŕñ ñøẁ (ẁìţĥøùţ ìñţèŕŕùþţìñğ ìţ) · {{chord}} ·······················]"
     },
     "reasoningEffortDropdown": {
       "effort": "[Èƒƒøŕţ ·········]",

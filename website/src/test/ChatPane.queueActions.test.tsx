@@ -110,6 +110,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 import ChatPane from '../components/ChatPane'
 import { api } from '../api/client'
+import { clickQueueCardMenuItem, openQueueCardMenu } from './queueCardMenu'
 
 function renderPane(slotKey: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -145,8 +146,8 @@ beforeEach(() => {
 describe('ChatPane queue actions (issue #5891)', () => {
   it('cancelling a queued card hands its text back to this pane composer instead of losing it', async () => {
     const { store } = renderPane('pane-cancel')
-    const x = await screen.findByRole('button', { name: 'Cancel queued message' })
-    fireEvent.click(x)
+    // Cancel lives in the card's overflow menu (the row keeps two controls).
+    await clickQueueCardMenuItem('Cancel queued message')
 
     await waitFor(() => expect(paneInputValue).toBe('queued draft'))
     expect(api.cancelQueuedMessage).toHaveBeenCalledWith('pane-cancel', 'q-77')
@@ -159,30 +160,34 @@ describe('ChatPane queue actions (issue #5891)', () => {
     const d = deferred()
     vi.mocked(api.interruptSlot).mockReturnValue(d.promise as ReturnType<typeof api.interruptSlot>)
     renderPane('pane-latch')
-    const zap = await screen.findByRole('button', { name: 'Send now' })
-    fireEvent.click(zap)
+    await clickQueueCardMenuItem('Send now')
 
     // Interrupt has no optimistic dispatch, so the card stays put; the latch is
     // the only thing standing between a double-click and a duplicate request.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Send now' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Cancel queued message' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Edit queued message' })).toBeDisabled()
+    // Both row controls — the inline Steer and the overflow trigger that holds
+    // Send now / Edit / Cancel — go dark together.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Steer now' })).toBeDisabled()
 
     await act(async () => { d.resolve({ ok: true }) })
     // STILL disabled. The 200 means the entry is being promoted, not that the card
     // is finished: it goes away with the queue_pop frame. Re-enabling here would
     // hand back a button whose next click interrupts the turn this click started.
-    expect(screen.getByRole('button', { name: 'Send now' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Steer now' })).toBeDisabled()
   })
 
   it('swallows a second interrupt click on a latched card', async () => {
     const d = deferred()
     vi.mocked(api.interruptSlot).mockReturnValue(d.promise as ReturnType<typeof api.interruptSlot>)
     renderPane('pane-latch-2')
-    const zap = await screen.findByRole('button', { name: 'Send now' })
-    fireEvent.click(zap)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Send now' })).toBeDisabled())
-    fireEvent.click(screen.getByRole('button', { name: 'Send now' }))
+    await clickQueueCardMenuItem('Send now')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled())
+    // A latched card offers no second Send now: the trigger is dark, and any
+    // item still mounted from the first open is disabled with it.
+    await openQueueCardMenu()
+    const again = screen.queryByRole('menuitem', { name: 'Send now' })
+    if (again) fireEvent.click(again)
 
     expect(api.interruptSlot).toHaveBeenCalledTimes(1)
     await act(async () => { d.resolve({ ok: true }) })

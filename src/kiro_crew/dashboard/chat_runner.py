@@ -5469,10 +5469,18 @@ def _requeue_unconsumed_steers(state: "DashboardState", slot: "_ChatSlot") -> No
         _sid = getattr(slot, "_steer_send_ids", {}).pop(steer_msg, "")
         if _sid:
             _meta["sendId"] = _sid
+        # And the send's attachment lists, one step further still: the drain's
+        # union puts them on the row, so the requeued steer renders its attachment
+        # cards instead of a whitespace-bounded read of the marker text. Same
+        # lockstep pop, same additive shape for a steer that carried none.
+        _att = getattr(slot, "_steer_attachments", {}).pop(steer_msg, None)
+        if _att:
+            _meta.update(_att)
         # Provenance is derivable, not guessed: `steer_into_running_turn` has
-        # exactly one caller (the api_chat composer branch), and app isolation
-        # confines app-surface requests to app-scoped slots — so every steer
-        # into a NON-app slot came from the authenticated human composer. That
+        # two callers -- the api_chat composer branch and the queued-message
+        # steer route -- and both refuse app-authenticated requests, while app
+        # isolation confines app-surface requests to app-scoped slots. So every
+        # steer into a NON-app slot came from the authenticated human. That
         # provenance is what exempts the requeued card from the LINKED drop,
         # exactly as the composer's own queued
         # fallback is exempt; an app slot's steers stay unexempted (False).

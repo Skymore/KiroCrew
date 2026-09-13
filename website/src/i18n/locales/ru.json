@@ -6025,7 +6025,8 @@
       "session_control_ready": "Готово",
       "session_control_chip_label": "{{label}} — {{detail}}",
       "agent_inherited_default": "Эта сессия использует агента по умолчанию ({{name}}). У неё нет собственного агента, поэтому она меняется вместе с ним. Нажмите, чтобы закрепить агента.",
-      "model_inherited_default": "Эта сессия использует модель по умолчанию ({{name}}). У неё нет собственной модели, поэтому она меняется вместе со значением по умолчанию. Нажмите, чтобы закрепить."
+      "model_inherited_default": "Эта сессия использует модель по умолчанию ({{name}}). У неё нет собственной модели, поэтому она меняется вместе со значением по умолчанию. Нажмите, чтобы закрепить.",
+      "queued_steer_placeholder": "{{chord}} направляет первое сообщение из очереди сейчас · или продолжайте писать…"
     },
     "chatPane": {
       "agent_list": "Список агентов",
@@ -7378,7 +7379,10 @@
       "sub_agent_result_few": "{{count}} результата субагентов",
       "sub_agent_result_many": "{{count}} результатов субагентов",
       "sub_agent_result_one": "{{count}} результат субагента",
-      "sub_agent_result_other": "{{count}} результата субагентов"
+      "sub_agent_result_other": "{{count}} результата субагентов",
+      "steer_now": "Направить сейчас",
+      "steer_this_into_the_running_turn_now_without_interrupting": "Направить это в текущий ход сейчас (не прерывая его)",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "Направить это в текущий ход сейчас (не прерывая его) · {{chord}}"
     },
     "readingWidthToggle": {
       "label_full": "П",

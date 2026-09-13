@@ -5839,7 +5839,8 @@
       "session_control_ready": "तैयार",
       "session_control_chip_label": "{{label}} — {{detail}}",
       "agent_inherited_default": "यह सत्र डिफ़ॉल्ट एजेंट ({{name}}) का अनुसरण करता है। इसका अपना कोई एजेंट नहीं है, इसलिए डिफ़ॉल्ट बदलने पर यह भी बदल जाता है। पिन करने के लिए क्लिक करें।",
-      "model_inherited_default": "यह सत्र डिफ़ॉल्ट मॉडल ({{name}}) पर चलता है। इसका अपना कोई मॉडल नहीं है, इसलिए डिफ़ॉल्ट बदलने पर यह भी बदल जाता है। एक पिन करने के लिए क्लिक करें।"
+      "model_inherited_default": "यह सत्र डिफ़ॉल्ट मॉडल ({{name}}) पर चलता है। इसका अपना कोई मॉडल नहीं है, इसलिए डिफ़ॉल्ट बदलने पर यह भी बदल जाता है। एक पिन करने के लिए क्लिक करें।",
+      "queued_steer_placeholder": "{{chord}} कतार का पहला संदेश अभी स्टीयर करता है · या लिखते रहें…"
     },
     "chatPane": {
       "agent_list": "एजेंट सूची",
@@ -7158,7 +7159,10 @@
       "save_edit": "संपादन सहेजें",
       "send_now": "अभी भेजें",
       "sub_agent_result_one": "{{count}} सब-एजेंट परिणाम",
-      "sub_agent_result_other": "{{count}} सब-एजेंट परिणाम"
+      "sub_agent_result_other": "{{count}} सब-एजेंट परिणाम",
+      "steer_now": "अभी स्टीयर करें",
+      "steer_this_into_the_running_turn_now_without_interrupting": "इसे अभी चल रहे टर्न में स्टीयर करें (बिना रोके)",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "इसे अभी चल रहे टर्न में स्टीयर करें (बिना रोके) · {{chord}}"
     },
     "readingWidthToggle": {
       "label_full": "प",

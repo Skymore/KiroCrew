@@ -3637,6 +3637,10 @@ export const api = {
   stopChatSlotForce: (slot: string) => post('/api/chat/slots/' + encodeURIComponent(slot) + '/stop?force=true').then(j),
   cancelQueuedMessage: (slot: string, queueId: string) => del('/api/chat/slots/' + encodeURIComponent(slot) + '/queue/' + encodeURIComponent(queueId)).then(j),
   editQueuedMessage: (slot: string, queueId: string, content: string) => patch('/api/chat/slots/' + encodeURIComponent(slot) + '/queue/' + encodeURIComponent(queueId), { content }).then(j),
+  /** Steer a queued entry into the RUNNING turn (no interrupt). `steered` when
+   *  the text is in the turn; `queued` (no `steered`) when the turn could not
+   *  take a steer and the entry stayed put, same id; 404 when it already drained. */
+  steerQueuedMessage: (slot: string, queueId: string) => post('/api/chat/slots/' + encodeURIComponent(slot) + '/queue/' + encodeURIComponent(queueId) + '/steer').then(j) as Promise<{ ok: boolean; steered?: boolean; queued?: boolean; queue_id?: string }>,
   reorderQueuedMessages: (slot: string, order: string[]) => put('/api/chat/slots/' + encodeURIComponent(slot) + '/queue/order', { order }).then(j),
   interruptSlot: (slot: string, queueId?: string) => post('/api/chat/slots/' + encodeURIComponent(slot) + '/interrupt', queueId ? { queue_id: queueId } : {}).then(j),
   /** Ask the sleeping `wait` tool to return early. Cooperative, not a stop:

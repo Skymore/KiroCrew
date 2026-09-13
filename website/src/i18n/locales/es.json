@@ -5932,7 +5932,8 @@
       "session_control_ready": "Listo",
       "session_control_chip_label": "{{label}} — {{detail}}",
       "agent_inherited_default": "Esta sesión sigue el agente predeterminado ({{name}}). No tiene un agente propio, así que cambia si cambia el predeterminado. Haz clic para fijar uno.",
-      "model_inherited_default": "Esta sesión usa el modelo predeterminado ({{name}}). No tiene un modelo propio, así que cambia si cambia el predeterminado. Haz clic para fijar uno."
+      "model_inherited_default": "Esta sesión usa el modelo predeterminado ({{name}}). No tiene un modelo propio, así que cambia si cambia el predeterminado. Haz clic para fijar uno.",
+      "queued_steer_placeholder": "{{chord}} redirige ahora el primer mensaje en cola · o sigue escribiendo…"
     },
     "chatPane": {
       "agent_list": "Lista de agentes",
@@ -7268,7 +7269,10 @@
       "send_now": "Enviar ahora",
       "sub_agent_result_many": "{{count}} resultados de subagentes",
       "sub_agent_result_one": "{{count}} resultado del subagente",
-      "sub_agent_result_other": "{{count}} resultados de subagentes"
+      "sub_agent_result_other": "{{count}} resultados de subagentes",
+      "steer_now": "Redirigir ahora",
+      "steer_this_into_the_running_turn_now_without_interrupting": "Redirigir esto al turno en curso ahora (sin interrumpirlo)",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "Redirigir esto al turno en curso ahora (sin interrumpirlo) · {{chord}}"
     },
     "readingWidthToggle": {
       "label_full": "C",

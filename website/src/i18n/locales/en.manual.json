@@ -1289,7 +1289,10 @@
       "hidden_attachments_one": "+{{count}} attachment",
       "hidden_attachments_other": "+{{count}} attachments",
       "hidden_lines_one": "+{{count}} line",
-      "hidden_lines_other": "+{{count}} lines"
+      "hidden_lines_other": "+{{count}} lines",
+      "steer_now": "Steer now",
+      "steer_this_into_the_running_turn_now_without_interrupting": "Steer this into the running turn now (without interrupting it)",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "Steer this into the running turn now (without interrupting it) · {{chord}}"
     },
     "voicePlaybackNotice": {
       "failed": "{{speak}} failed. Check the Text-to-speech settings and try again.",
@@ -1679,6 +1682,7 @@
       "queue_run_after_the_current_work_finishes_desc": "Run after the current work finishes",
       "alt_action_hint_queues": "{{chord}} queues this message instead",
       "alt_action_hint_steers": "{{chord}} steers with this message instead",
+      "queued_steer_placeholder": "{{chord}} steers the front queued message now · or keep typing…",
       "steer_act_on_this_right_away_desc": "Act on this right away",
       "finishing": "Finishing…",
       "keep_holding_to_record": "Keep holding to record",

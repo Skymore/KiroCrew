@@ -78,6 +78,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 import ChatPane from '../components/ChatPane'
 import { api } from '../api/client'
+import { clickQueueCardMenuItem } from './queueCardMenu'
 
 function makeStore(slotKey: string) {
   return configureStore({
@@ -116,12 +117,12 @@ beforeEach(() => {
 describe('ChatPane queue inline edit (issue #2240)', () => {
   it('threads onEdit into QueueStack: the Pencil renders and a committed edit calls api.editQueuedMessage with this slot and queue id', async () => {
     const { store } = renderPane('pane-edit')
-    // The Pencil is gated on `onEdit && showActions` inside QueueStack — it can
-    // only appear when ChatPane passes onEdit, which is the omission #2240 pins.
-    // Role-scoped queries: the button and the EditInput share the same
-    // accessible name, so match by role rather than bare label text.
-    const pencil = await screen.findByRole('button', { name: 'Edit queued message' })
-    fireEvent.click(pencil)
+    // Edit is gated on `onEdit && showActions` inside QueueStack — it can only
+    // appear when ChatPane passes onEdit, which is the omission #2240 pins. It
+    // lives in the card's overflow menu (the row keeps two controls), so open
+    // that first. Role-scoped queries: the menu item and the EditInput share
+    // the same accessible name, so match by role rather than bare label text.
+    await clickQueueCardMenuItem('Edit queued message')
     const input = (await screen.findByRole('textbox', { name: 'Edit queued message' })) as HTMLTextAreaElement
     fireEvent.change(input, { target: { value: 'edited from split pane' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -135,8 +136,7 @@ describe('ChatPane queue inline edit (issue #2240)', () => {
 
   it('trims the committed content before dispatching (mirrors ChatPage.handleEditQueued)', async () => {
     renderPane('pane-edit-2')
-    const pencil = await screen.findByRole('button', { name: 'Edit queued message' })
-    fireEvent.click(pencil)
+    await clickQueueCardMenuItem('Edit queued message')
     const input = (await screen.findByRole('textbox', { name: 'Edit queued message' })) as HTMLTextAreaElement
     fireEvent.change(input, { target: { value: '  padded edit  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })

@@ -1647,9 +1647,18 @@ export function useWebSocket() {
             // which is keyed on `mid`, resolves this row -- without it that patch
             // matches nothing and the state never moves until a reload.
             const steerMid = (data as { mid?: unknown }).mid
+            // The send's attachment lists, when the steer carried any — the same
+            // keys a dispatched or queued send's row persists, so the live echo
+            // renders attachment cards exactly as a reload would. Only well-formed
+            // string lists are taken; a malformed one is dropped, never guessed at.
+            const steerAttachments: Record<string, string[]> = {}
+            for (const key of ['files', 'dirs'] as const) {
+              const v = (data as Record<string, unknown>)[key]
+              if (Array.isArray(v) && v.length && v.every(p => typeof p === 'string')) steerAttachments[key] = v as string[]
+            }
             dispatch(appendSlotMessage({
               slot: (data as { slot?: string }).slot || store.getState().chat.activeSlot || '',
-              message: { role: 'user', content: (data as { content?: string }).content || '', cls: 'msg msg-u', meta: { steer: true, ...(typeof steerSid === 'string' && steerSid ? { sendId: steerSid } : {}), ...(typeof steerState === 'string' && steerState ? { steerState } : {}), ...(typeof steerMid === 'string' && steerMid ? { mid: steerMid } : {}) }, ts: (data as { ts?: string }).ts },
+              message: { role: 'user', content: (data as { content?: string }).content || '', cls: 'msg msg-u', meta: { steer: true, ...(typeof steerSid === 'string' && steerSid ? { sendId: steerSid } : {}), ...(typeof steerState === 'string' && steerState ? { steerState } : {}), ...(typeof steerMid === 'string' && steerMid ? { mid: steerMid } : {}), ...steerAttachments }, ts: (data as { ts?: string }).ts },
             }))
             // Steering is the other way to type into a busy session, so it
             // settles the rank exactly like a queued send. The server appends a

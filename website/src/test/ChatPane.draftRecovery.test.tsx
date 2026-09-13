@@ -226,7 +226,9 @@ describe('ChatPane draft & recovery hardening (steer-only DM thread)', () => {
     forcedReceipt = { status: 'response-late', body: {} }
     const { store } = renderPane('member-dup-queue', { running: false, busyMode: 'steer-only', subagentsOnly: true })
     const box = await composer()
-    await screen.findByRole('button', { name: 'Cancel queued message' })
+    // The card is on screen once its inline control is (Cancel now lives in
+    // the card's overflow menu).
+    await screen.findByRole('button', { name: 'Steer now' })
     fireEvent.change(box, { target: { value: 'ok' } })
     fireEvent.keyDown(box, { key: 'Enter', code: 'Enter' })
     await waitFor(() => expect(lastSendTurnOpts).not.toBeNull())

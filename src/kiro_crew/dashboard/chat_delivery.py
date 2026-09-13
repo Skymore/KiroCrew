@@ -232,6 +232,7 @@ async def steer_into_running_turn(
     message: str,
     *,
     send_id: str | None = None,
+    attachments: dict[str, list[str]] | None = None,
 ) -> str:
     """Inject *message* into the slot's RUNNING turn; return a ``STEER_*`` outcome.
 
@@ -247,6 +248,14 @@ async def steer_into_running_turn(
     and additive: a send without one keeps the exact prior row/payload shape.
     Normalized at entry (``normalize_send_id``) so the type/length bound holds
     for every caller, not just the current one.
+
+    ``attachments`` is the send's attachment lists, already reduced to
+    ``{files: [...], dirs: [...]}`` by ``attachment_meta`` (the same shape a
+    dispatched or queued send persists on its row). Unioned onto the steer row's
+    meta and echoed on ``steer_push`` so the renderer resolves ``[attached_file N]``
+    markers against the list instead of falling back to a whitespace-bounded read
+    of the marker text — which hands back ``/tmp/My`` for ``/tmp/My Report.pdf``.
+    Optional and additive for the same reason as ``send_id``.
     """
     send_id = normalize_send_id(send_id)
     client = getattr(slot, "_acp_client", None)
@@ -314,6 +323,20 @@ async def steer_into_running_turn(
     # requeued entry's meta unchanged.
     if send_id:
         slot._steer_send_ids[message] = send_id
+    # Only the known attachment keys, each a non-empty list: the row renderer
+    # indexes `files[N-1]` for marker N, so an empty or foreign key would buy
+    # nothing and change the row shape for sends that carried none. Filtered
+    # HERE, before the await, because the requeue is a reader too: a steer the
+    # teardown degrades to a queue card must carry its lists onto that entry,
+    # and the teardown runs in another coroutine that never sees this call's
+    # arguments. Same ledger discipline as `_steer_send_ids`.
+    _attach = {
+        k: v
+        for k, v in (attachments or {}).items()
+        if k in ATTACHMENT_META_KEYS and isinstance(v, list) and v
+    }
+    if _attach:
+        slot._steer_attachments[message] = _attach
     slot._pending_steers.append(message)
     try:
         steered = await client.steer(message)
@@ -337,6 +360,7 @@ async def steer_into_running_turn(
         # every intermediate transition, including a merged row.
         slot._steer_delivery_ids.pop(message, None)
         slot._steer_send_ids.pop(message, None)
+        slot._steer_attachments.pop(message, None)
         logger.info(
             "steer for slot %s was requeued and drained during the RPC; row already " "persisted",
             slot.key,
@@ -356,6 +380,7 @@ async def steer_into_running_turn(
             slot._pending_steers.remove(message)
             slot._steer_delivery_ids.pop(message, None)
             slot._steer_send_ids.pop(message, None)
+            slot._steer_attachments.pop(message, None)
             return STEER_UNAVAILABLE
         if stopped:
             # Still registered means the teardown has not run yet and will
@@ -433,6 +458,8 @@ async def steer_into_running_turn(
     # few lines below, so nothing will read the map entry again and leaving it
     # would hold a full message string for the slot's lifetime.
     slot._steer_send_ids.pop(message, None)
+    # And the attachment lists, stamped onto this row a few lines below.
+    slot._steer_attachments.pop(message, None)
 
     ts = datetime.now(timezone.utc).isoformat()
     # Cut the in-flight text segment at the steer boundary BEFORE persisting the
@@ -499,6 +526,8 @@ async def steer_into_running_turn(
         # transcript page is what mergePreservedThinking reads to resolve an
         # optimistic bubble by id (accepted steer vs raced new turn).
         meta["sendId"] = send_id
+    # The lists filtered at entry (`_attach`), stamped onto the row and the echo.
+    meta.update(_attach)
     # Store the sanitized form — raw content must never reach an external
     # surface — so the steer survives a page reload via the dirty-flush cycle.
     _row = slot.append("user", sanitized, "msg msg-u", ts=ts, meta=meta)
@@ -510,6 +539,9 @@ async def steer_into_running_turn(
         # A later `chat_message_update` moves a `written` row to consumed or
         # requeued; a row already persisted as consumed is terminal.
         "steerState": _state,
+        # Same lists the row carries, so the live echo renders the attachment
+        # cards a reload would. Absent keys keep the pre-attachment payload shape.
+        **_attach,
     }
     # The row's own id, so the client stores it and the later state patch -- which
     # is keyed on `mid` -- can find this row. Without it the client row has no

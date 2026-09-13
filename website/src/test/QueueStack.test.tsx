@@ -17,6 +17,144 @@ function openEditor() {
   return screen.getByLabelText('Edit queued message') as HTMLTextAreaElement
 }
 
+describe('QueueStack expanded order', () => {
+  it('puts the collapse chevron on the LAST card, which is now the bottom of the run-order list', () => {
+    // The y positions are spring-animated by framer-motion, which jsdom cannot
+    // settle synchronously, so the visual order is pinned structurally: the
+    // collapse chevron is attached to whichever card renders at the bottom.
+    const { container } = render(
+      <QueueStack messages={[queued('first', 'q1'), queued('second', 'q2'), queued('third', 'q3')]} onReorder={vi.fn()} />,
+    )
+    const toggle = container.querySelector('[role="button"]')!
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const cards = Array.from(container.querySelectorAll('.queue-card')) as HTMLElement[]
+    const byText = (t: string) => cards.find(c => c.textContent?.includes(t))!
+    expect(byText('third').querySelector('.rotate-180')).not.toBeNull()
+    expect(byText('first').querySelector('.rotate-180')).toBeNull()
+  })
+
+  it('disables "run sooner" on the top card and "run later" on the bottom card', () => {
+    const onReorder = vi.fn()
+    const { container } = render(
+      <QueueStack messages={[queued('first', 'q1'), queued('second', 'q2')]} onReorder={onReorder} />,
+    )
+    fireEvent.click(container.querySelector('[role="button"]')!)
+    const sooner = screen.getAllByLabelText('Run sooner') as HTMLButtonElement[]
+    const later = screen.getAllByLabelText('Run later') as HTMLButtonElement[]
+    // Index 0 (top) cannot move sooner; the last (bottom) cannot move later.
+    expect(sooner[0].disabled).toBe(true)
+    expect(later[1].disabled).toBe(true)
+    fireEvent.click(sooner[1])
+    expect(onReorder).toHaveBeenCalledWith('q2', 'next')
+  })
+})
+
+describe('QueueStack action row (max two controls)', () => {
+  const all = () => ({
+    onSteer: vi.fn(), onInterrupt: vi.fn(), onEdit: vi.fn(), onCancel: vi.fn(), onReorder: vi.fn(),
+  })
+
+  it('keeps Steer inline and folds every other action into one overflow menu', async () => {
+    const h = all()
+    render(<QueueStack messages={[queued('act on this', 'q1')]} {...h} />)
+    // Exactly two controls in the row: the primary action and the trigger.
+    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(screen.getByLabelText('Steer now')).toBeInTheDocument()
+    expect(screen.getByLabelText('More actions')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send now' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel queued message' })).toBeNull()
+    fireEvent.keyDown(screen.getByLabelText('More actions'), { key: 'Enter' })
+    const items = await screen.findAllByRole('menuitem')
+    expect(items.map(i => i.textContent)).toEqual(['Send now', 'Edit queued message', 'Cancel queued message'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Send now' }))
+    expect(h.onInterrupt).toHaveBeenCalledWith('q1')
+    expect(h.onSteer).not.toHaveBeenCalled()
+  })
+
+  it('offers the reorder actions in the menu only when expanded with 2+ cards', async () => {
+    const h = all()
+    const { container } = render(<QueueStack messages={[queued('first', 'q1'), queued('second', 'q2')]} {...h} />)
+    fireEvent.click(container.querySelector('[role="button"]')!)
+    const triggers = screen.getAllByLabelText('More actions')
+    fireEvent.keyDown(triggers[1], { key: 'Enter' })
+    await screen.findByRole('menuitem', { name: 'Run sooner' })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Run sooner' }))
+    expect(h.onReorder).toHaveBeenCalledWith('q2', 'next')
+  })
+
+  it('opening the menu by pointer does not toggle the stack', async () => {
+    const h = all()
+    const { container } = render(<QueueStack messages={[queued('first', 'q1'), queued('second', 'q2')]} {...h} />)
+    const toggle = container.querySelector('[role="button"]')!
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const trigger = screen.getAllByLabelText('More actions')[0]
+    // The container toggles on click, so a trigger click that bubbled would
+    // fold the stack the user is looking at.
+    fireEvent.pointerDown(trigger)
+    fireEvent.click(trigger)
+    await screen.findAllByRole('menuitem')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opening the menu by keyboard does not toggle the stack', async () => {
+    const h = all()
+    const { container } = render(<QueueStack messages={[queued('first', 'q1'), queued('second', 'q2')]} {...h} />)
+    const toggle = container.querySelector('[role="button"]')!
+    fireEvent.click(toggle)
+    const trigger = screen.getAllByLabelText('More actions')[0]
+    // The container also toggles on Enter/Space.
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    await screen.findAllByRole('menuitem')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('renders two actions inline with no menu (the side chat: edit + cancel)', () => {
+    const onEdit = vi.fn()
+    const onCancel = vi.fn()
+    render(<QueueStack messages={[queued('side', 'q1')]} onEdit={onEdit} onCancel={onCancel} />)
+    expect(screen.queryByLabelText('More actions')).toBeNull()
+    expect(screen.getByLabelText('Edit queued message')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Cancel queued message'))
+    expect(onCancel).toHaveBeenCalledWith('q1')
+  })
+
+  it('the trigger goes dark with the card while pending', () => {
+    const h = all()
+    render(<QueueStack messages={[queued('act on this', 'q1')]} {...h} pendingIds={new Set(['q1'])} />)
+    expect((screen.getByLabelText('More actions') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Steer now') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('QueueStack steer-now button', () => {
+  it('is the inline action and fires onSteer with the card id', () => {
+    const onSteer = vi.fn()
+    const onInterrupt = vi.fn()
+    render(<QueueStack messages={[queued('act on this', 'q1')]} onSteer={onSteer} onInterrupt={onInterrupt} />)
+    fireEvent.click(screen.getByLabelText('Steer now'))
+    expect(onSteer).toHaveBeenCalledWith('q1')
+    // Steer never routes through the interrupting sibling.
+    expect(onInterrupt).not.toHaveBeenCalled()
+  })
+
+  it('is absent when the host provides no steer path, and Send now takes the inline slot', () => {
+    render(<QueueStack messages={[queued('act on this', 'q1')]} onInterrupt={vi.fn()} />)
+    expect(screen.queryByLabelText('Steer now')).toBeNull()
+    expect(screen.getByLabelText('Send now')).toBeInTheDocument()
+  })
+
+  it('is disabled while the card is pending', () => {
+    const onSteer = vi.fn()
+    render(<QueueStack messages={[queued('act on this', 'q1')]} onSteer={onSteer} pendingIds={new Set(['q1'])} />)
+    const btn = screen.getByLabelText('Steer now') as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    fireEvent.click(btn)
+    expect(onSteer).not.toHaveBeenCalled()
+  })
+})
+
 describe('QueueStack inline edit', () => {
   it('commits a real change on Enter', () => {
     const onEdit = vi.fn()

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import { AnimatePresence, motion, useMotionValue, useSpring } from 'framer-motion'
-import { Hourglass, ChevronUp, X, Zap, Pencil, Check, Bot, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
+import { Hourglass, ChevronUp, X, Zap, Pencil, Check, Bot, Loader2, ArrowUp, ArrowDown, Target, MoreHorizontal } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { useImeGuard } from '../hooks/useImeGuard'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './ui/dropdown-menu'
 
 import { i18nT } from '../i18n/t'
+import { platformShortcut } from '../utils/platform'
 import { parseRecoveryMessage } from '../pages/chat/RecoveryCard'
 import { hasSubagentCompletionPrefix } from '../pages/chat/subagentCompletion'
 import { useLanguageGeneration } from '../i18n/useLanguageGeneration'
@@ -98,6 +100,16 @@ const OVERLAP = 11 // overlap to fuse with input area below
 
 const DEPTH_BRIGHTNESS = [1, 0.88, 0.76]
 const SPRING = { type: 'spring' as const, stiffness: 400, damping: 30 }
+/** Beat between the front card and the rest when the stack unfolds or folds.
+ *
+ *  The expanded list reads top-down in run order, so the front card (bottom,
+ *  fused to the composer when collapsed) has to travel to the TOP, past the
+ *  cards peeking behind it. Springing everything at once made it cross them
+ *  mid-flight; instead it keeps the top layer and rises first, and the rest
+ *  wait this long before dropping into their slots beneath it. Collapse runs in
+ *  reverse so it lands back on top of them. (The original stack avoided the
+ *  crossing by listing bottom-up, which read as the queue being in reverse.) */
+const LIFT_STAGGER_S = 0.08
 
 /** Inline editor (textarea + save) swapped in for the message text while editing.
  *  Owns the live value so its own controls commit the typed text, never stale content.
@@ -193,10 +205,68 @@ function EditInput({ initial, onCommit, onCancel }: {
   )
 }
 
-function QueueStackInner({ messages, onCancel, onInterrupt, onEdit, onReorder, fuseBelow = true, pendingIds }: {
+/** One thing a queue card can do. Rendered either as an inline icon button or as
+ *  an item in the card's overflow menu — same label, same handler, same
+ *  disabled state — so which of the two a given action gets is a layout
+ *  decision the row makes, not something each action knows about. */
+interface CardAction {
+  key: string
+  /** Visible menu text and the inline button's aria-label. */
+  label: string
+  /** Inline button tooltip when it should say more than the label. */
+  title?: string
+  icon: React.ReactNode
+  /** Inline: draw in the foreground text colour rather than the card's warn tint. */
+  emphasis?: boolean
+  disabled?: boolean
+  run: () => void
+}
+
+/** The card's overflow menu: every action past the first, so the row itself
+ *  never holds more than two controls. Same pattern as `CronRowActions` and
+ *  `SessionActionsMenu`. Every pointer/keyboard event is stopped at the trigger
+ *  and the content: the stack's own container toggles expand/collapse on click
+ *  and Enter/Space, and both the trigger and (through React's portal bubbling)
+ *  the menu items sit inside it. */
+function QueueCardOverflow({ actions, disabled }: { actions: CardAction[]; disabled: boolean }) {
+  const [open, setOpen] = useState(false)
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          title={i18nT('components.chatInput.more_actions')}
+          aria-label={i18nT('components.chatInput.more_actions')}
+          disabled={disabled}
+          onClick={stop}
+          onPointerDown={stop}
+          onKeyDown={stop}
+        >
+          <MoreHorizontal size={13} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[180px]" onClick={stop} onKeyDown={stop}>
+        {actions.map(a => (
+          <DropdownMenuItem key={a.key} disabled={a.disabled} onSelect={() => { setOpen(false); a.run() }}>
+            <span className="shrink-0 inline-flex">{a.icon}</span>
+            <span>{a.label}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function QueueStackInner({ messages, onCancel, onInterrupt, onSteer, onEdit, onReorder, fuseBelow = true, pendingIds }: {
   messages: ChatMessage[]
   onCancel?: (queueId: string) => void
+  /** Stop the running turn and start THIS entry as the next turn. */
   onInterrupt?: (queueId: string) => void
+  /** Inject THIS entry into the running turn as a steer — the turn keeps going
+   *  and reads the text at its next inference boundary. The non-interrupting
+   *  sibling of `onInterrupt`: same "act on it now" intent, opposite cost. */
+  onSteer?: (queueId: string) => void
   onEdit?: (queueId: string, content: string) => void
   /** Move a queued message one step toward the front (`next`) or the back
    *  (`later`) of the run order. Index 0 runs first. */
@@ -274,6 +344,138 @@ function QueueStackInner({ messages, onCancel, onInterrupt, onEdit, onReorder, f
     if (messages.length === 0) marginSpring.jump(0)
   }
 
+  /** The card's row: index, text (or the inline editor), and its action
+   *  controls. Pulled out of the card loop so the loop reads as geometry and
+   *  motion only; the row itself does not depend on where the card sits.
+   *
+   *  The action row holds AT MOST two controls (`max-two-buttons-per-row`): the
+   *  first action inline, and — when there is more than one other — a single
+   *  overflow menu carrying the rest. With two actions or fewer (the side chat's
+   *  edit + cancel) both stay inline and no menu is rendered. Order is the
+   *  action list's, so what stays visible is decided once, up front: Steer now
+   *  when the host offers it (the non-interrupting "act on it now", the reason
+   *  the card is worth a control while a turn runs), else Send now, else Edit. */
+  const cardBody = (
+    m: ChatMessage,
+    i: number,
+    { isFrontCollapsed, isEditing, queueId, isPending, showActions }: {
+      isFrontCollapsed: boolean; isEditing: boolean; queueId: string | undefined; isPending: boolean; showActions: boolean
+    },
+  ) => {
+    const actions: CardAction[] = []
+    if (showActions && onSteer) {
+      actions.push({
+        key: 'steer',
+        label: i18nT('components.queueStack.steer_now'),
+        // The chord acts on the FRONT card only (it is what an empty-composer
+        // ⌘↩ steers), so only that card advertises it — a chord on card 3 would
+        // promise something the key does not do.
+        title: i === 0
+          ? i18nT('components.queueStack.steer_this_into_the_running_turn_now_without_interrupting_chord', { chord: platformShortcut('Cmd+Enter') })
+          : i18nT('components.queueStack.steer_this_into_the_running_turn_now_without_interrupting'),
+        icon: <Target size={13} />,
+        emphasis: true,
+        disabled: isPending,
+        run: () => onSteer(queueId!),
+      })
+    }
+    if (showActions && onInterrupt) {
+      actions.push({
+        key: 'interrupt',
+        label: i18nT('components.queueStack.send_now'),
+        title: i18nT('components.queueStack.interrupt_current_turn_and_send_this_now'),
+        icon: <Zap size={13} fill="currentColor" />,
+        emphasis: true,
+        disabled: isPending,
+        run: () => onInterrupt(queueId!),
+      })
+    }
+    if (showActions && onEdit) {
+      actions.push({
+        key: 'edit',
+        label: i18nT('components.queueStack.edit_queued_message'),
+        icon: <Pencil size={13} />,
+        disabled: isPending,
+        run: () => setEditingId(queueId!),
+      })
+    }
+    // Reorder only makes sense with 2+ cards, and only in the expanded stack
+    // where the run order is visible. The list reads top-down in run order
+    // (index 0 on top), so "run sooner" moves the card UP: ↑ sooner, ↓ later.
+    if (onReorder && expanded && messages.length > 1) {
+      actions.push({
+        key: 'sooner',
+        label: i18nT('components.queueStack.run_sooner'),
+        icon: <ArrowUp size={13} />,
+        disabled: i === 0,
+        run: () => onReorder(queueId!, 'next'),
+      })
+      actions.push({
+        key: 'later',
+        label: i18nT('components.queueStack.run_later'),
+        icon: <ArrowDown size={13} />,
+        disabled: i === messages.length - 1,
+        run: () => onReorder(queueId!, 'later'),
+      })
+    }
+    if (showActions && onCancel) {
+      actions.push({
+        key: 'cancel',
+        label: i18nT('components.queueStack.cancel_queued_message'),
+        title: i18nT('components.queueStack.cancel_and_move_back_to_input'),
+        icon: <X size={13} />,
+        disabled: isPending,
+        run: () => onCancel(queueId!),
+      })
+    }
+    const inline = actions.length <= 2 ? actions : actions.slice(0, 1)
+    const overflow = actions.length <= 2 ? [] : actions.slice(1)
+
+    return (
+      <span className="flex items-center gap-1.5 h-full">
+        <span className="shrink-0 text-[10px] font-mono opacity-50 w-4 text-center">{i + 1}</span>
+        {isFrontCollapsed && (
+          <span className="shrink-0 inline-flex animate-[hourglass-flip_3s_ease-in-out_infinite]">
+            <Hourglass size={13} />
+          </span>
+        )}
+        {isEditing && onEdit ? (
+          <EditInput initial={m.content} onCommit={v => commitEdit(queueId!, v)} onCancel={cancelEdit} />
+        ) : (
+          <>
+            <span className="truncate flex-1">{m.content}</span>
+            {inline.map(a => (
+              <button
+                key={a.key}
+                className={`shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${a.emphasis ? 'text-[var(--text)]' : ''}`}
+                title={a.title ?? a.label}
+                aria-label={a.label}
+                disabled={a.disabled}
+                onClick={(e) => { e.stopPropagation(); a.run() }}
+              >
+                {a.icon}
+              </button>
+            ))}
+            {overflow.length > 0 && (
+              <QueueCardOverflow actions={overflow} disabled={isPending} />
+            )}
+            {isFrontCollapsed && messages.length > 1 && (
+              <span className="shrink-0 flex items-center gap-1 text-[11px] opacity-70">
+                {messages.length} {i18nT('components.queueStack.queued')}
+                <ChevronUp size={12} />
+              </span>
+            )}
+            {/* Collapse affordance stays on the card nearest the
+                composer — the stack folds down onto that edge. */}
+            {expanded && i === messages.length - 1 && (
+              <ChevronUp size={13} className="shrink-0 opacity-50 rotate-180" />
+            )}
+          </>
+        )}
+      </span>
+    )
+  }
+
   return (
     // `zIndex: 2` clears the transcript's bottom mask (`z-[1]`), whose
     // COMPOSER_MASK_OVERSHOOT_PX tail reaches below the scrollport edge on the
@@ -301,32 +503,56 @@ function QueueStackInner({ messages, onCancel, onInterrupt, onEdit, onReorder, f
       >
         <AnimatePresence initial={false} onExitComplete={onExitComplete}>
           {messages.map((m, i) => {
+            const n = messages.length
+            const listY = (idx: number) => idx * (CARD_H + EXPANDED_GAP)
+            // Collapsed geometry: the front card sits at the bottom, fused to the
+            // composer; each deeper card peeks PEEK px above the one before it.
+            const peek = i <= MAX_PEEK
+              ? {
+                  y: (collapsedHeight - CARD_H) - i * PEEK,
+                  scale: 1 - (i + 1) * SCALE_STEP,
+                  opacity: 1,
+                  zIndex: (MAX_PEEK + 1) - i,
+                  brightness: DEPTH_BRIGHTNESS[i] ?? DEPTH_BRIGHTNESS[MAX_PEEK],
+                }
+              : {
+                  y: (collapsedHeight - CARD_H) - MAX_PEEK * PEEK,
+                  scale: 1 - (MAX_PEEK + 1) * SCALE_STEP - HIDDEN_EXTRA_SCALE,
+                  opacity: 0,
+                  zIndex: 0,
+                  brightness: DEPTH_BRIGHTNESS[MAX_PEEK],
+                }
+
             let y: number
             let scale: number
             let opacity: number
             let zIndex: number
             let brightness: number
+            // Stagger applies only on the render that flips `expanded`. On any other
+            // re-render (a card added or drained) nothing here should wait: a freshly
+            // promoted front card must not pause before sliding into its slot.
+            const toggling = prevExpanded.current !== expanded
+            let transition: typeof SPRING & { delay?: number } = SPRING
 
             if (expanded) {
-              const pos = messages.length - 1 - i
-              y = pos * (CARD_H + EXPANDED_GAP)
+              // Run order reads top-down: index 0 (runs next) on top, like a list.
+              y = listY(i)
               scale = 1
               opacity = 1
-              zIndex = pos + 1
               brightness = 1
-            } else if (i <= MAX_PEEK) {
-              const depth = i
-              y = (collapsedHeight - CARD_H) - depth * PEEK
-              scale = 1 - (depth + 1) * SCALE_STEP
-              opacity = 1
-              zIndex = (MAX_PEEK + 1) - depth
-              brightness = DEPTH_BRIGHTNESS[depth] ?? DEPTH_BRIGHTNESS[MAX_PEEK]
+              // The front card owns the top layer in BOTH states, so it never dives
+              // under the cards it passes on its way up; the rest hold their peek
+              // positions for one beat and then drop into their slots beneath it.
+              zIndex = i === 0 ? n + 2 : i + 1
+              if (toggling && i > 0) transition = { ...SPRING, delay: LIFT_STAGGER_S }
             } else {
-              y = (collapsedHeight - CARD_H) - MAX_PEEK * PEEK
-              scale = 1 - (MAX_PEEK + 1) * SCALE_STEP - HIDDEN_EXTRA_SCALE
-              opacity = 0
-              zIndex = 0
-              brightness = DEPTH_BRIGHTNESS[MAX_PEEK]
+              ;({ y, scale, opacity, zIndex, brightness } = peek)
+              if (i === 0) {
+                zIndex = n + 2
+                // Reverse order on collapse: the rest return to their peeks first, and
+                // the front card lands back on top of them last.
+                if (toggling) transition = { ...SPRING, delay: LIFT_STAGGER_S }
+              }
             }
 
             const isFrontCollapsed = !expanded && i === 0
@@ -354,7 +580,7 @@ function QueueStackInner({ messages, onCancel, onInterrupt, onEdit, onReorder, f
                   borderBottomWidth: fused ? 0 : 1,
                 }}
                 exit={{ y: y + 40, zIndex: 50, borderBottomWidth: 1, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, transition: SPRING }}
-                transition={SPRING}
+                transition={transition}
                 // Theme colors are raw var(--x) without <alpha-value>, so Tailwind
                 // alpha modifiers (bg-warn/15) silently generate no CSS. Use explicit
                 // color-mix instead — and mix the bg toward the opaque surface color
@@ -364,90 +590,7 @@ function QueueStackInner({ messages, onCancel, onInterrupt, onEdit, onReorder, f
                 className="queue-card absolute top-0 left-0 right-0 bg-[color-mix(in_srgb,var(--warn)_15%,var(--bg-elevated))] border border-[color-mix(in_srgb,var(--warn)_40%,transparent)] px-3 py-2 text-[13px] text-warn"
                 style={{ transformOrigin: 'bottom center', height: CARD_H, zIndex }}
               >
-                <span className="flex items-center gap-1.5 h-full">
-                  <span className="shrink-0 text-[10px] font-mono opacity-50 w-4 text-center">{i + 1}</span>
-                  {isFrontCollapsed && (
-                    <span className="shrink-0 inline-flex animate-[hourglass-flip_3s_ease-in-out_infinite]">
-                      <Hourglass size={13} />
-                    </span>
-                  )}
-                  {isEditing && onEdit ? (
-                    <EditInput initial={m.content} onCommit={v => commitEdit(queueId!, v)} onCancel={cancelEdit} />
-                  ) : (
-                    <>
-                      <span className="truncate flex-1">{m.content}</span>
-                      {/* Reorder arrows only make sense with 2+ cards, and only
-                          in the expanded stack where the run order is visible.
-                          Index 0 runs first and renders at the BOTTOM of the
-                          expanded stack, so "run sooner" moves the card DOWN
-                          visually: ArrowDown = sooner, ArrowUp = later. */}
-                      {onReorder && expanded && messages.length > 1 && (
-                        <>
-                          <button
-                            className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            title={i18nT('components.queueStack.run_sooner')}
-                            aria-label={i18nT('components.queueStack.run_sooner')}
-                            disabled={i === 0}
-                            onClick={(e) => { e.stopPropagation(); onReorder(queueId!, 'next') }}
-                          >
-                            <ArrowDown size={13} />
-                          </button>
-                          <button
-                            className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                            title={i18nT('components.queueStack.run_later')}
-                            aria-label={i18nT('components.queueStack.run_later')}
-                            disabled={i === messages.length - 1}
-                            onClick={(e) => { e.stopPropagation(); onReorder(queueId!, 'later') }}
-                          >
-                            <ArrowUp size={13} />
-                          </button>
-                        </>
-                      )}
-                      {onEdit && showActions && (
-                        <button
-                          className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={i18nT('components.queueStack.edit_queued_message')}
-                          aria-label={i18nT('components.queueStack.edit_queued_message')}
-                          disabled={isPending}
-                          onClick={(e) => { e.stopPropagation(); setEditingId(queueId!) }}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      )}
-                      {onInterrupt && showActions && (
-                        <button
-                          className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors text-[var(--text)] disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={i18nT('components.queueStack.interrupt_current_turn_and_send_this_now')}
-                          aria-label={i18nT('components.queueStack.send_now')}
-                          disabled={isPending}
-                          onClick={(e) => { e.stopPropagation(); onInterrupt(queueId!) }}
-                        >
-                          <Zap size={13} fill="currentColor" />
-                        </button>
-                      )}
-                      {onCancel && showActions && (
-                        <button
-                          className="shrink-0 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={i18nT('components.queueStack.cancel_and_move_back_to_input')}
-                          aria-label={i18nT('components.queueStack.cancel_queued_message')}
-                          disabled={isPending}
-                          onClick={(e) => { e.stopPropagation(); onCancel(queueId!) }}
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
-                      {isFrontCollapsed && messages.length > 1 && (
-                        <span className="shrink-0 flex items-center gap-1 text-[11px] opacity-70">
-                          {messages.length} {i18nT('components.queueStack.queued')}
-                          <ChevronUp size={12} />
-                        </span>
-                      )}
-                      {expanded && i === 0 && (
-                        <ChevronUp size={13} className="shrink-0 opacity-50 rotate-180" />
-                      )}
-                    </>
-                  )}
-                </span>
+                {cardBody(m, i, { isFrontCollapsed, isEditing, queueId, isPending, showActions })}
               </motion.div>
             )
           })}
@@ -464,6 +607,7 @@ export default memo(QueueStackInner, (prev, next) =>
   prev.messages.every((m, i) => m === next.messages[i]) &&
   prev.onCancel === next.onCancel &&
   prev.onInterrupt === next.onInterrupt &&
+  prev.onSteer === next.onSteer &&
   prev.onEdit === next.onEdit &&
   prev.onReorder === next.onReorder
 )

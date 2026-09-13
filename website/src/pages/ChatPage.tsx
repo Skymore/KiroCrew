@@ -4884,6 +4884,8 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
   const {
     onCancel: handleCancelQueued,
     onInterrupt: handleInterruptQueued,
+    onSteer: handleSteerQueued,
+    onSteerFront: handleSteerFrontQueued,
     onEdit: handleEditQueued,
     onReorder: handleReorderQueued,
     pendingIds: queuePendingIds,
@@ -7020,7 +7022,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
               {!(activityOpen && !search.isOpen && tabsCtl.tabs.find(t => t.id === tabsCtl.activeId)?.kind === 'subagents') && <SubagentProgressBar slot={activeSlot} />}
               {!(activityOpen && !search.isOpen && tabsCtl.tabs.find(t => t.id === tabsCtl.activeId)?.kind === 'workflows') && <WorkflowProgressBar slot={activeSlot} />}
               <SubagentDeliveryProgress count={systemDeliveryCount} />
-              <QueueStack messages={queuedMessages} onCancel={handleCancelQueued} onInterrupt={handleInterruptQueued} onEdit={handleEditQueued} onReorder={handleReorderQueued} pendingIds={queuePendingIds} fuseBelow={followUpOptions.length === 0 && !knowledgeFetch.pendingKnowledge} />
+              <QueueStack messages={queuedMessages} onCancel={handleCancelQueued} onInterrupt={handleInterruptQueued} onSteer={handleSteerQueued} onEdit={handleEditQueued} onReorder={handleReorderQueued} pendingIds={queuePendingIds} fuseBelow={followUpOptions.length === 0 && !knowledgeFetch.pendingKnowledge} />
               </div>
               {flyingQuote && <FlyingQuote text={flyingQuote.text} from={flyingQuote.from} targetRef={inputAreaRef} onComplete={endQuoteFlight} />}
               <div ref={inputAreaRef} className="relative z-10">
@@ -7240,6 +7242,8 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
               onSend={() => send()}
               canSteer={composerBusy}
               onSteer={steer}
+              onSteerFrontQueued={handleSteerFrontQueued}
+              queuedCount={queuedMessages.length}
               onFollowUpSend={(text?: string, sourceKeyAtClick?: string | null) => {
                 // Double-click and Send-now share dispatchPlanFollowUp with
                 // single-click (#6240). First-click row identity refuses a

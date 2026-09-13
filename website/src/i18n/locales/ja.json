@@ -5746,7 +5746,8 @@
       "session_control_ready": "準備完了",
       "session_control_chip_label": "{{label}} — {{detail}}",
       "agent_inherited_default": "このセッションはデフォルトエージェント（{{name}}）に従います。独自のエージェントを持たないため、デフォルトが変わると変わります。固定するにはクリックしてください。",
-      "model_inherited_default": "このセッションはデフォルトモデル（{{name}}）で動作します。独自のモデルを持たないため、デフォルトが変わると変わります。固定するにはクリックしてください。"
+      "model_inherited_default": "このセッションはデフォルトモデル（{{name}}）で動作します。独自のモデルを持たないため、デフォルトが変わると変わります。固定するにはクリックしてください。",
+      "queued_steer_placeholder": "{{chord}} でキューの先頭メッセージを今すぐ指示に · または入力を続ける…"
     },
     "chatPane": {
       "agent_list": "エージェントリスト",
@@ -7048,7 +7049,10 @@
       "save": "保存",
       "save_edit": "編集を保存",
       "send_now": "今すぐ送信",
-      "sub_agent_result_other": "{{count}} 個のサブエージェント結果"
+      "sub_agent_result_other": "{{count}} 個のサブエージェント結果",
+      "steer_now": "今すぐ指示を追加",
+      "steer_this_into_the_running_turn_now_without_interrupting": "実行中のターンに今すぐ指示を追加（中断しない）",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "実行中のターンに今すぐ指示を追加（中断しない）· {{chord}}"
     },
     "readingWidthToggle": {
       "label_full": "F",

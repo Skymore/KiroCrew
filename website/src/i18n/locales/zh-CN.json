@@ -5704,6 +5704,7 @@
       "steer": "引导",
       "alt_action_hint_queues": "{{chord}} 改为将这条消息排队",
       "alt_action_hint_steers": "{{chord}} 改为用这条消息立即引导",
+      "queued_steer_placeholder": "{{chord}} 立即引导队首的排队消息 · 或继续输入…",
       "steer_act_on_this_right_away_desc": "立即处理此消息",
       "steer_act_on_this_as_soon_as_possible_enter": "引导 — 尽快处理此消息 (Enter)",
       "stop_generation": "停止生成",
@@ -7048,6 +7049,9 @@
       "save": "保存",
       "save_edit": "保存修改",
       "send_now": "立即发送",
+      "steer_now": "立即引导",
+      "steer_this_into_the_running_turn_now_without_interrupting": "立即引导进当前轮次（不中断）",
+      "steer_this_into_the_running_turn_now_without_interrupting_chord": "立即引导进当前轮次（不中断）· {{chord}}",
       "sub_agent_result_other": "{{count}} 个子代理结果"
     },
     "readingWidthToggle": {

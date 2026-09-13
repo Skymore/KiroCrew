@@ -425,6 +425,17 @@ interface ChatInputProps {
    * composer text and pending files itself (ChatPage) and clears them
    * atomically — ChatInput must NOT clear the value around this call. */
   onSteer?: () => void
+  /** ⌘↩ / Ctrl+Enter on an EMPTY busy composer: steer the front QUEUED card into
+   * the running turn instead of sending the (empty) draft. "The message I already
+   * queued — act on it now", the Codex desktop gesture. Returns false when no
+   * card is queued so the key falls through to its ordinary handling. Only
+   * consulted while the busy split is available; hosts without a main-slot
+   * queue omit it. */
+  onSteerFrontQueued?: () => boolean
+  /** How many interactive cards sit in this slot's queue. Drives the empty
+   * composer's placeholder while busy: with a card waiting, the placeholder
+   * names the ⌘↩ gesture that steers it, since nothing else on screen does. */
+  queuedCount?: number
   /** How the BUSY composer offers its send. `'split'` (default): the
    * Steer/Queue split button with its per-slot mode picker — the main chat
    * and split-view panes. `'steer-only'`: the surface has no queue concept —
@@ -871,6 +882,8 @@ function ChatInput({
   onSend,
   canSteer,
   onSteer,
+  onSteerFrontQueued,
+  queuedCount = 0,
   busyMode = 'split',
   disabled: disabledProp = false,
   placeholder = '',
@@ -2758,6 +2771,14 @@ function ChatInput({
       // always was. The flip lands in `fireComposer`, which ignores it whenever
       // the split is not available, so this cannot steer a non-steerable slot.
       const alternate = sendOnEnter === 'enter' && (e.metaKey || e.ctrlKey)
+      // Same gesture on an EMPTY busy composer: there is no draft to flip, so it
+      // acts on what is already waiting — steer the front queued card into the
+      // running turn (the Codex desktop "⌘↩ on a queued message" behaviour).
+      // Gated on the busy split for the same reason the flip is: an idle slot
+      // has no running turn to steer into, and `steer-only` has no queue.
+      // Falls through when nothing is queued, so the key still means what it
+      // always did there (a no-op send of an empty draft).
+      if (alternate && busyChoiceAvailable && !steerOnly && !valueRef.current.trim() && onSteerFrontQueued?.()) return
       if (connected) fireComposer(alternate)
       return
     }
@@ -2822,7 +2843,7 @@ function ChatInput({
       }
       e.preventDefault()
     }
-  }, [fireComposer, onChange, sentMessages, sendOnEnter, pasteBlocks, onPasteBlocksChange, connected, ime, optimizePrompt, promptOptimizer])
+  }, [fireComposer, onChange, sentMessages, sendOnEnter, pasteBlocks, onPasteBlocksChange, connected, ime, optimizePrompt, promptOptimizer, busyChoiceAvailable, steerOnly, onSteerFrontQueued])
 
   /** Intercept clipboard paste — files go to upload path, big text gets collapsed into a token. */
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -3379,6 +3400,16 @@ function ChatInput({
    */
   const voiceModePlaceholder = voiceModeAvailable && !voiceHoldMode && !composerHasDraft && !placeholder
     ? i18nT('components.chatInput.send_a_message_or_tap_the_mic_for_voice')
+    : ''
+  /** Busy, a card is queued, and the composer is empty: the one moment the
+   *  empty-composer ⌘↩ (steer the front queued card) is live, and the only
+   *  place that gesture is advertised — the card's tooltip needs a hover, and
+   *  the split-button menu needs a click. Gated exactly like the key handler:
+   *  the busy split must be available, `steer-only` has no queue, and in the
+   *  `ctrl-enter` / `enter-ctrl-newline` send modes the chord means something
+   *  else. Host-supplied `placeholder` still wins, as it does for voice. */
+  const queuedSteerPlaceholder = busyChoiceAvailable && !steerOnly && sendOnEnter === 'enter' && queuedCount > 0 && !!onSteerFrontQueued && !placeholder
+    ? i18nT('components.chatInput.queued_steer_placeholder', { chord: platformShortcut('Cmd+Enter') })
     : ''
   /** Combined height of every strip currently stacked above the textarea,
    *  MEASURED rather than predicted from the strips' Tailwind classes. The
@@ -3969,7 +4000,7 @@ function ChatInput({
                 onSelectionChange={publishLexicalSelection}
                 sentMessages={sentMessages}
                 ariaLabel={inputAriaLabel ?? i18nT('components.chatInput.message_input')}
-                placeholder={!connected ? i18nT('components.chatInput.gateway_offline_message_will_not_send') : disabledProp ? i18nT('components.chatInput.stopping') : voiceRecording ? i18nT('components.chatInput.recording_click_mic_to_stop') : voiceTranscribing ? i18nT('components.chatInput.transcribing_please_wait') : continuePlaceholder || voiceModePlaceholder || resolvedPlaceholder}
+                placeholder={!connected ? i18nT('components.chatInput.gateway_offline_message_will_not_send') : disabledProp ? i18nT('components.chatInput.stopping') : voiceRecording ? i18nT('components.chatInput.recording_click_mic_to_stop') : voiceTranscribing ? i18nT('components.chatInput.transcribing_please_wait') : continuePlaceholder || queuedSteerPlaceholder || voiceModePlaceholder || resolvedPlaceholder}
                 disabled={disabled}
                 readOnly={optimizing}
                 sendOnEnter={sendOnEnter}
@@ -3987,7 +4018,7 @@ function ChatInput({
           data-composer-typo
           className={/* focus-cue-ok: the cue is the composer shell's focus-within border-accent brightening; a second ring on the textarea would double-paint one control. */ `relative w-full bg-transparent border-none ${INPUT_TYPO} text-text outline-none min-h-[44px] max-h-[50vh] placeholder:text-muted resize-none ${manualHeight !== null ? 'flex-1' : ''} ${disabled ? 'opacity-40 pointer-events-none' : ''} ${optimizing ? 'opacity-30' : ''}`}
           style={manualHeight !== null ? { height: '100%' } : undefined}
-          placeholder={!connected ? i18nT('components.chatInput.gateway_offline_message_will_not_send') : disabledProp ? i18nT('components.chatInput.stopping') : voiceRecording ? i18nT('components.chatInput.recording_click_mic_to_stop') : voiceTranscribing ? i18nT('components.chatInput.transcribing_please_wait') : continuePlaceholder || voiceModePlaceholder || resolvedPlaceholder}
+          placeholder={!connected ? i18nT('components.chatInput.gateway_offline_message_will_not_send') : disabledProp ? i18nT('components.chatInput.stopping') : voiceRecording ? i18nT('components.chatInput.recording_click_mic_to_stop') : voiceTranscribing ? i18nT('components.chatInput.transcribing_please_wait') : continuePlaceholder || queuedSteerPlaceholder || voiceModePlaceholder || resolvedPlaceholder}
           readOnly={optimizing}
           rows={1}
           value={value}

@@ -5,12 +5,25 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 # This is well above the slot queue's legitimate in-flight set.  Eviction only
 # bounds orphaned bookkeeping; an evicted agent remains recoverable on restart.
 MAX_PENDING_SUBAGENT_DELIVERIES = 128
+
+
+@dataclass(frozen=True)
+class TakenQueueEntry:
+    """An entry lifted off the queue by ``queue_take_by_id``, with what
+    ``queue_restore`` needs to put it back where it was: the entry object itself
+    and the ids of its former neighbours (``None`` at either end)."""
+
+    index: int
+    entry: dict[str, Any]
+    prev_id: str | None
+    next_id: str | None
 
 
 def _delivery_key(content: str) -> str:
@@ -245,6 +258,44 @@ class SlotQueueRepository:
                 del owner._queue[index]
                 return item["content"]
         return None
+
+    def queue_take_by_id(self, owner: Any, queue_id: str) -> TakenQueueEntry | None:
+        """Remove the matching entry and return it with the anchors for a put-back.
+
+        The steer route takes an entry off the queue BEFORE it awaits the steer
+        RPC (so the drain cannot start it meanwhile), and must be able to return
+        the very same entry -- same id, same meta, same place -- when the turn
+        turns out not to accept a steer. ``queue_remove_by_id`` hands back only
+        the text, which is not enough to rebuild that.
+
+        "Same place" is recorded as the ids of the entries either side, not as a
+        numeric index: the queue can move under the await (an earlier entry
+        cancelled, a later one appended), and an index restored blindly would
+        then land the entry ahead of, or behind, entries it never overtook.
+        """
+        for index, item in enumerate(owner._queue):
+            if item["id"] == queue_id:
+                prev_id = owner._queue[index - 1]["id"] if index > 0 else None
+                next_id = owner._queue[index + 1]["id"] if index + 1 < len(owner._queue) else None
+                del owner._queue[index]
+                return TakenQueueEntry(index=index, entry=item, prev_id=prev_id, next_id=next_id)
+        return None
+
+    def queue_restore(self, owner: Any, taken: TakenQueueEntry) -> None:
+        """Put an entry taken by ``queue_take_by_id`` back in its relative place.
+
+        Before the entry that followed it if that one is still queued; else right
+        after the one that preceded it; else at the original index, clamped. Each
+        fallback is what "the same place" means once its better anchor is gone.
+        """
+        ids = [item["id"] for item in owner._queue]
+        if taken.next_id is not None and taken.next_id in ids:
+            position = ids.index(taken.next_id)
+        elif taken.prev_id is not None and taken.prev_id in ids:
+            position = ids.index(taken.prev_id) + 1
+        else:
+            position = min(max(taken.index, 0), len(owner._queue))
+        owner._queue.insert(position, taken.entry)
 
     def queue_edit_by_id(
         self,
