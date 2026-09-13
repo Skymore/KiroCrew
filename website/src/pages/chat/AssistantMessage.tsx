@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, memo, useRef, useId, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, Check, Volume2, Code, Eye, ClipboardList, CheckCircle, RefreshCw, ChevronLeft, ChevronRight, GitFork, Loader2, Link2, Compass, Pin, PinOff, MoreHorizontal, Share2, X } from 'lucide-react'
+import { Copy, Check, Volume2, Code, Eye, ClipboardList, CheckCircle, RefreshCw, ChevronLeft, ChevronRight, GitFork, Loader2, Link2, Compass, Clock, Pin, PinOff, MoreHorizontal, Share2, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../../components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../../components/ui/dropdown-menu'
 import { copyToClipboard } from '../../utils/clipboard'
 import { stripKeepVisibleMarker } from '../../app-sdk/protocol/keepVisibleMarker'
 import { copySessionLink } from '../../utils/shareUrl'
-import { HOVER_NONE_ACTIONS_ROW_CLS } from '../../utils/touchActions'
+import { ICON_ACTION_ROW_CLS } from '../../utils/touchActions'
 import MarkdownRenderer from '../../components/MarkdownRenderer'
 import MessageErrorBoundary from '../../components/MessageErrorBoundary'
 import SelectionToolbar, { useSelectionActions } from '../../components/SelectionToolbar'
@@ -93,7 +93,7 @@ const LazyShareMessageModal = lazy(() => import('./share/ShareMessageModal'))
 
 /** The footer's hover-reveal + touch-target contract, shared by the action row and the
     unavailable fork affordance that sits outside it. */
-const ACTIONS_REVEAL_CLS = `flex items-center gap-1 mt-1 opacity-0 transition-opacity duration-300 delay-100 group-hover/msg:opacity-100 group-hover/msg:delay-300 group-focus-within/msg:opacity-100 group-focus-within/msg:delay-300 ${HOVER_NONE_ACTIONS_ROW_CLS}`
+const ACTIONS_REVEAL_CLS = `flex items-center gap-y-1 mt-1 opacity-0 transition-opacity duration-300 delay-100 group-hover/msg:opacity-100 group-hover/msg:delay-300 group-focus-within/msg:opacity-100 group-focus-within/msg:delay-300 ${ICON_ACTION_ROW_CLS}`
 
 const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, onFileOpen, onFolderOpen, onArtifactOpen, onSessionOpen, sessions, activeSession, planTaskId, onApplyPlan, slotRunning, onSpeak, timestamp, timestampTitle, showFooter = true, revealActions = false, onRegenerate, variants, variantIdx, onSwitchVariant, isRegenerating, onFork, onPlanFromHere, forkIndex, forkMessageId, onLoadEarlier, loadingOlder, earlierRemaining, onQuote, onAsk, messageTs, slotKey, slotTitle, mode, fileChanges, onOpenDiff, fileChipStyle, artifactPaths, turnStats, linkPreviews, pinned, onTogglePin, suppressSteerAck, prevUserText, shareEnabled = false }: { content: string; isStreaming: boolean; onFileOpen?: (path: string, opts?: { line?: number; endLine?: number }) => void; onFolderOpen?: (path: string) => void; onArtifactOpen?: (slug: string) => void; onSessionOpen?: (key: string) => void; sessions?: ReadonlyMap<string, string>; activeSession?: string; planTaskId?: string; onApplyPlan?: (steps: PlanStepInput[]) => Promise<boolean>; slotRunning?: boolean; onSpeak?: (content: string) => void; timestamp?: string; timestampTitle?: string; showFooter?: boolean; revealActions?: boolean; onRegenerate?: () => void; variants?: { content: string; ts?: string }[]; variantIdx?: number; onSwitchVariant?: (index: number) => void; isRegenerating?: boolean; onFork?: (index: number, messageId?: string) => void | Promise<void>; onPlanFromHere?: (index: number, messageId?: string) => void | Promise<void>; forkIndex?: number; forkMessageId?: string; onLoadEarlier?: () => void; loadingOlder?: boolean; earlierRemaining?: number; onQuote?: (text: string, rect: DOMRect) => void; onAsk?: (text: string, rect: DOMRect) => void; messageTs?: string; slotKey?: string; slotTitle?: string; mode?: string; fileChanges?: FileChangeEntry[]; onOpenDiff?: (path: string, modified: string, original: string) => void; fileChipStyle?: FileChipStyle; artifactPaths?: Set<string>; turnStats?: TurnStats; linkPreviews?: boolean; pinned?: boolean; onTogglePin?: () => void; /** Drop the steer chip: this turn's steer was a system policy notice, not the user's. */ suppressSteerAck?: boolean; /** The user question this reply answered — enables the share card's Q&A pairing. */ prevUserText?: string; /** Governance answer from `/api/dashboard/config` (`social_share_enabled`). The host passes it explicitly; an absent prop hides Share, so a forgotten wire fails closed. */ shareEnabled?: boolean }) {
   useLanguageGeneration() // memo() bails out of the provider-level repaint; subscribe directly
@@ -337,7 +337,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
   // The overflow menu lives IN the footer action row, in EVERY state. Upstream
   // placed it below the row to keep the row from growing, but the below-row
   // placement is a SECOND `ACTIONS_REVEAL_CLS` row carrying its own `mt-1`, and
-  // HOVER_NONE_ACTIONS_ROW_CLS makes these rows permanently visible with 44px
+  // ICON_ACTION_ROW_CLS makes these rows permanently visible with 36x32
   // targets on touch -- so it added a full row of height to EVERY completed
   // turn's footer. Rows above a reader growing by that much is a page-scale
   // downward displacement the first time they re-measure (reported from a phone
@@ -355,22 +355,14 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
   const forkItemsInMenu = forkIndex === undefined || !!forkMessageId
   const oldMenuContext = !!(onFork || onPlanFromHere) && (shareEnabled || forkItemsInMenu)
   const hasSpeak = !!onSpeak && text.trim().length > 0
-  // The per-turn stats (model, credits, elapsed) live in the menu, so a
-  // completed turn with a measurement always carries the trigger, even in an
-  // embedded pane with no fork/plan/speak handlers.
-  const hasTurnStats = !!turnStats && turnStats.elapsed_ms > 0
-  const menuAvailable = oldMenuContext || hasTurnStats || hasSpeak
+  const menuAvailable = oldMenuContext || hasSpeak
   useEffect(() => {
     if (!menuAvailable || isStreaming || !showFooter) setOverflowOpen(false)
   }, [isStreaming, menuAvailable, showFooter])
   // A reply that previously had no overflow swaps Copy for More. That keeps the
   // footer's peer-control count unchanged while making Speak available for short
-  // replies too (`max-two-buttons-per-row`: a row must not grow). Existing
-  // overflow footers retain their familiar inline Copy. The stats header is a
-  // menu reason like Speak: a pane whose only trigger reason is the stats (an
-  // app-SDK reply with no fork/plan context) also swaps Copy for More, so the
-  // row that used to read Copy + raw toggle now reads raw toggle + More.
-  const copyInMenu = (hasSpeak || hasTurnStats) && !oldMenuContext
+  // replies too. Existing overflow footers retain their familiar inline Copy.
+  const copyInMenu = hasSpeak && !oldMenuContext
   const copyMessage = () => {
     const stripped = stripKeepVisibleMarker(steerCleaned)
     copyToClipboard(stripped === steerCleaned ? stripped : stripped.trimEnd()).then((ok) => {
@@ -401,30 +393,6 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[210px]">
-          {hasTurnStats && (<>
-            {/* Two short lines, not one: the model id is the longest piece and
-                would push a 210px menu wide on its own. Model on top (what
-                served), then cost before elapsed (credits are the resource
-                users budget). The FULL untrimmed model id stays on the title,
-                as it did on the old footer line. No `font-mono` on the numbers
-                line: it is a measurement, not code, and `font-mono` would pin
-                `var(--mono)` over the Font Family setting; `tabular-nums`
-                keeps the digits fixed-width regardless. */}
-            <DropdownMenuLabel data-testid="turn-stats" title={turnStatsTitle} className="font-normal text-[12px] leading-[18px] tabular-nums select-text">
-              {turnStats.model && <div className="font-mono truncate text-text/80" data-testid="turn-model">{fmtTurnModel(turnStats.model)}</div>}
-              <div>
-                {(() => {
-                  const credits = turnStats.credits ?? 0
-                  const cost = turnStats.cost_usd ?? 0
-                  const billed = credits > 0
-                    ? `${fmtCredits(credits)} credits`
-                    : cost > 0 ? `$${cost.toFixed(cost < 0.01 ? 4 : 2)}` : ''
-                  return billed ? `${billed} · ${fmtTurnElapsed(turnStats.elapsed_ms)}` : fmtTurnElapsed(turnStats.elapsed_ms)
-                })()}
-              </div>
-            </DropdownMenuLabel>
-            {(copyInMenu || hasSpeak || oldMenuContext) && <DropdownMenuSeparator />}
-          </>)}
           {copyInMenu && (
             <DropdownMenuItem
               data-testid="copy-message-menu-item"
@@ -450,7 +418,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
             </DropdownMenuItem>
           )}
           {oldMenuContext && shareEnabled && (
-          <DropdownMenuItem data-testid="share-message" onSelect={() => setShareOpen(true)}>
+          <DropdownMenuItem className="[@media(hover:none)]:min-h-10" data-testid="share-message" onSelect={() => setShareOpen(true)}>
             <span className="flex items-center gap-2">
               <Share2 size={13} className="shrink-0" />
               <span>{i18nT('pages.chat.assistantMessage.share_message')}</span>
@@ -465,7 +433,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
               aria-disabled={forkIndex === undefined || busyAction !== null || undefined}
               aria-describedby={forkIndex === undefined ? `${reasonId}-fork` : undefined}
               // Same 40px touch floor as Speak, so the items sit at one rhythm on a phone.
-              className="flex-col items-start gap-0.5"
+              className="flex-col items-start justify-center gap-0.5 [@media(hover:none)]:min-h-10"
               data-testid="fork-from-here"
               onSelect={(e) => {
                 if (busyAction !== null) { e.preventDefault(); return }
@@ -490,7 +458,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
             <DropdownMenuItem
               aria-disabled={forkIndex === undefined || busyAction !== null || undefined}
               aria-describedby={forkIndex === undefined ? `${reasonId}-plan` : undefined}
-              className="flex-col items-start gap-0.5"
+              className="flex-col items-start justify-center gap-0.5 [@media(hover:none)]:min-h-10"
               data-testid="plan-from-here"
               onSelect={(e) => {
                 if (busyAction !== null) { e.preventDefault(); return }
@@ -570,13 +538,36 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
          are directly compatible: extra optional params are ignored. */
       <FileChangeChips fileChanges={fileChanges} onOpenDiff={onOpenDiff} onFileOpen={onFileOpen} style={fileChipStyle} artifactPaths={artifactPaths} disclosureKey={messageTs ? `fcc-${messageTs}` : undefined} />
     )}
-    {/* The per-turn stats (model · credits · elapsed) used to sit here as an
-        always-visible line under every completed turn. They now live at the
-        top of the More menu, so a finished reply ends at its content and the
-        footer is a single hover-revealed action row. */}
-    {/* Where the pointer cannot hover, the footer's descendant overrides grow
-        every action to a 40px touch target (20px icon + 10px padding); pointer
-        devices keep the compact 14px icons untouched. */}
+    {!isStreaming && showFooter && turnStats && turnStats.elapsed_ms > 0 && (
+      /* No `font-mono`: "1.98 credits · 59s" is a labelled measurement, not
+         code, and Tailwind's `font-mono` pins `var(--mono)` — a token the Font
+         Family setting never writes, so this line ignored the user's choice.
+         `tabular-nums` stays: fixed-width digits are what the mono was earning
+         here, and it works in a proportional face too. */
+      <div className="flex items-center gap-1 mt-1 text-[11px] leading-4 text-muted/60 tabular-nums" data-testid="turn-stats" title={turnStatsTitle}>
+        {/* Cost leads, elapsed trails: credits are the scarce resource users
+            actually budget, so they read first. The clock icon travels WITH the
+            elapsed value (never leads the line) so it never appears to label
+            the credit figure. */}
+        {(() => {
+          const credits = turnStats.credits ?? 0
+          const cost = turnStats.cost_usd ?? 0
+          const billed = credits > 0
+            ? `${fmtCredits(credits)} credits`
+            : cost > 0 ? `$${cost.toFixed(cost < 0.01 ? 4 : 2)}` : ''
+          return <>
+            {/* Model leads (what served), then cost (what it took), then time.
+                Trimmed for width; the untrimmed id is in the footer tooltip. */}
+            {turnStats.model && <span className="font-mono" data-testid="turn-model">{fmtTurnModel(turnStats.model)} ·</span>}
+            {billed && <span>{billed} ·</span>}
+            <Clock size={11} aria-hidden="true" />
+            <span>{fmtTurnElapsed(turnStats.elapsed_ms)}</span>
+          </>
+        })()}
+      </div>
+    )}
+    {/* Where the pointer cannot hover, the footer uses compact cells: 28px on
+        pointer devices and 36×32px on touch, with 14px/16px glyphs. */}
     {!isStreaming && showFooter && (<>
       <div className={`${ACTIONS_REVEAL_CLS} has-[[data-state=open]]:opacity-100 ${revealActions && hasSpeak ? '!opacity-100 !delay-0' : ''}`}>
         {/* No `font-mono`: a formatted date is prose, and Tailwind's `font-mono`

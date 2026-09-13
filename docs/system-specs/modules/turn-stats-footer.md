@@ -2,7 +2,7 @@
 
 ## Overview
 
-The dashboard persists per-turn measurement metadata on an assistant message and surfaces it in the footer's More menu when that message is the completed turn's final assistant message. `chat_runner._attach_turn_stats` keeps the metadata on the message before persistence, so the `chat_done` refresh can restore the same footer after reconnects.
+The dashboard persists per-turn measurement metadata on an assistant message and renders it as a muted footer when that message is the completed turn's final assistant message. `chat_runner._attach_turn_stats` keeps the metadata on the message before persistence, so the `chat_done` refresh can restore the same footer after reconnects.
 
 ## Data flow
 
@@ -22,7 +22,7 @@ _attach_turn_stats(slot, ...) → meta["turn_stats"] on a current-turn assistant
 chat_done → refreshSlot → persisted metadata
         │
         ▼
-AssistantMessage mounts the stats in the More menu when its presentation gates permit it
+AssistantMessage renders the footer when its presentation gates permit it
 ```
 
 ## Backend (`src/kiro_crew/dashboard/chat_runner.py`)
@@ -41,14 +41,14 @@ The helper preserves pre-existing `meta`, always records a positive `elapsed_ms`
 
 `website/src/pages/ChatPage.tsx` passes `m.meta.turn_stats` to `AssistantMessage` only when `ChatConfig.showTurnStats` is true. `ChatSettings.loadChatConfig` defaults and repairs that persisted setting as enabled under `mc-chat-config`; `ChatPanel` does not currently expose a control for it. `website/src/app-sdk/messageRenderers.tsx` separately forwards `turn_stats` without consulting `ChatConfig`.
 
-`website/src/pages/chat/AssistantMessage.tsx` renders the stats only when the message is not streaming, `showFooter` is true, and `turnStats.elapsed_ms` is positive. `ChatPage` computes `showFooter` for the last assistant message before a user message or, at the end of the transcript, after the slot is no longer running. Together with the backend boundary, these gates prevent an in-progress or earlier assistant segment from presenting the completed-turn stats.
+`website/src/pages/chat/AssistantMessage.tsx` renders the footer only when the message is not streaming, `showFooter` is true, and `turnStats.elapsed_ms` is positive. `ChatPage` computes `showFooter` for the last assistant message before a user message or, at the end of the transcript, after the slot is no longer running. Together with the backend boundary, these gates prevent an in-progress or earlier assistant segment from presenting the completed-turn footer.
 
-The stats live in the footer's More (`…`) menu, not as a standalone always-visible line: a completed turn's footer is the single hover-revealed action row (timestamp, Copy, link, pin, raw toggle, regenerate, More), so the stats cost no vertical space and are read on demand. They render as a non-interactive `DropdownMenuLabel` (`data-testid="turn-stats"`) at the top of the menu, followed by a separator and the ordinary items. The label is two lines at 12px with tabular numerals: the model on its own line in the monospace face (`data-testid="turn-model"`, `fmtTurnModel` trims known routing prefixes), then the billed value and elapsed time joined by a middle dot, with no clock glyph. Credits are shown when positive, otherwise a positive dollar cost; elapsed time always follows the billed value. The label's `title` carries the untrimmed model identifier. Because the stats are the one menu entry every completed turn has, a turn that carries a positive `elapsed_ms` always mounts the More trigger, even in an embedded pane with no speak, share, fork or plan handlers. Where the stats are the trigger's only reason (no fork/plan context), Copy moves into the menu beside them, exactly as it does when Speak is the only reason, so the action row keeps its control count (`max-two-buttons-per-row`); with fork/plan context Copy stays inline. `messageFooterFont.test.tsx` protects the header-level font-setting contract (only the model line is monospace). `fmtTurnElapsed`, `fmtCredits`, and their formatter tests in `AssistantMessage.test.tsx` pin the display rules. Missing `turn_stats`, `showFooter=false`, and streaming messages render no stats and, absent another menu reason, no trigger.
+The footer is visible rather than hover-revealed, uses muted tabular numerals, and places a clock beside elapsed time. Only the optional model label uses the monospace face; `messageFooterFont.test.tsx` protects the footer-level font-setting contract. It displays credits when positive and otherwise displays positive dollar cost; elapsed time always follows the billed value. `fmtTurnModel` trims known routing prefixes for the inline label while the title retains the untrimmed model identifier. `fmtTurnElapsed`, `fmtCredits`, and their formatter tests in `AssistantMessage.test.tsx` pin the display rules. Missing `turn_stats`, `showFooter=false`, and streaming messages render no stats footer.
 
 ## Tests
 
 - `test/test_turn_stats.py` (`TestAttachTurnStats`) covers attachment, omission, rounding, current-turn targeting, model attribution, and meta coexistence.
 - `test/test_usage.py` (`TestReadTurnModel`) covers resolved, Auto, and unattributable model states.
-- `website/src/test/AssistantMessage.test.tsx` (`turn stats footer`) opens the More menu and covers the header's rendering, line order, model display, the stats-only trigger, the absence of a standalone stats line, suppression gates, and formatters.
+- `website/src/test/AssistantMessage.test.tsx` (`turn stats footer`) covers rendering, ordering, model display, suppression gates, and formatters.
 - `website/src/test/ChatSettings.test.tsx` covers the persisted `showTurnStats` default and validation.
-- `website/src/test/messageFooterFont.test.tsx` verifies that the stats header follows the configured font family.
+- `website/src/test/messageFooterFont.test.tsx` verifies that the footer follows the configured font family.
