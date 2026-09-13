@@ -961,30 +961,143 @@ describe('parseOptions', () => {
   })
 })
 
-describe('turn stats footer (elapsed time + credits)', () => {
+describe('raw/rendered toggle is icon-only', () => {
+  it('carries no visible label; the title names the view a click will show and aria-pressed the current one', () => {
+    render(<AssistantMessage content={'x'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    const toggle = screen.getByTestId('toggle-raw-view')
+    // Every other row action is a bare 14px glyph; a text label here was the
+    // one control that broke the row's rhythm.
+    expect(toggle.textContent).toBe('')
+    expect(toggle.querySelector('svg')).not.toBeNull()
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    expect(toggle).toHaveAttribute('title', 'Raw markdown')
+    expect(toggle).toHaveAttribute('aria-label', 'Switch to raw markdown view')
+    const renderedGlyph = toggle.querySelector('svg')!.getAttribute('class')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(toggle).toHaveAttribute('title', 'Rendered view')
+    expect(toggle).toHaveAttribute('aria-label', 'Switch to rendered view')
+    expect(toggle.textContent).toBe('')
+    // The glyph flips with the state, the same way Pin becomes PinOff.
+    expect(toggle.querySelector('svg')!.getAttribute('class')).not.toBe(renderedGlyph)
+  })
+})
+
+describe('raw view holds the bubble at its rendered height', () => {
+  it('freezes the bubble height on entering raw view so the footer row does not move, and releases it on the way back', () => {
+    render(<AssistantMessage content={'# Title\n\n- one\n- two\n\n' + 'x'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    const bubble = screen.getByTestId('message-bubble')
+    // happy-dom has no layout; stand in for the rendered view's measured height.
+    bubble.getBoundingClientRect = () => ({ height: 137.5, width: 600, top: 0, left: 0, bottom: 137.5, right: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    expect(bubble.style.height).toBe('')
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    // Raw markdown wraps differently from its rendering; pinning the box to the
+    // rendered height keeps the action row (and the toggle under the pointer)
+    // exactly where it was, and the source scrolls inside the box instead.
+    expect(bubble.style.height).toBe('137.5px')
+    expect(bubble.style.overflowY).toBe('auto')
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    expect(bubble.style.height).toBe('')
+    expect(bubble.style.overflowY).toBe('')
+  })
+
+  it('releases the pin on a viewport resize and on a content change, but not before', () => {
+    const rect = () => ({ height: 137.5, width: 600, top: 0, left: 0, bottom: 137.5, right: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    const { rerender } = render(<AssistantMessage content={'# Title\n\n' + 'x'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    const bubble = screen.getByTestId('message-bubble')
+    bubble.getBoundingClientRect = rect
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    expect(bubble.style.height).toBe('137.5px')
+    // A re-render with the same content keeps the pin: the snapshot is still valid.
+    rerender(<AssistantMessage content={'# Title\n\n' + 'x'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    expect(bubble.style.height).toBe('137.5px')
+    // The viewport re-wraps everything, so the snapshot is stale: let go, stay in raw view.
+    act(() => { window.dispatchEvent(new Event('resize')) })
+    expect(bubble.style.height).toBe('')
+    expect(screen.getByTestId('toggle-raw-view')).toHaveAttribute('aria-pressed', 'true')
+    // Pin again, then swap the content (a variant switch): same release.
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    expect(bubble.style.height).toBe('137.5px')
+    rerender(<AssistantMessage content={'# Other\n\n' + 'y'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    expect(bubble.style.height).toBe('')
+  })
+
+  it('does not pin a height it could not measure', () => {
+    render(<AssistantMessage content={'x'.repeat(40)} isStreaming={false} slotRunning={false} />)
+    const bubble = screen.getByTestId('message-bubble')
+    // The rect is 0-high with no layout engine: nothing to hold, so no clamp.
+    fireEvent.click(screen.getByTestId('toggle-raw-view'))
+    expect(bubble.style.height).toBe('')
+  })
+})
+
+describe('turn stats in the More menu (elapsed time + credits)', () => {
+  // The stats moved from an always-visible footer line to a two-line header at
+  // the top of the More menu, so every read opens the menu first. A message with
+  // stats mounts the trigger even when nothing else (speak/fork/plan/share)
+  // would, which is what keeps the numbers reachable from an embedded pane.
+  const openStats = () => {
+    fireEvent.pointerDown(screen.getByTitle('More actions'), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    return screen.getByTestId('turn-stats')
+  }
+  const statsText = () => openStats().textContent!.replace(/\s+/g, ' ').trim()
+
   it('renders elapsed and credits on a completed turn', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
-    const stats = screen.getByTestId('turn-stats')
+    const stats = openStats()
     expect(stats).toHaveTextContent('1m 24s')
     expect(stats).toHaveTextContent('2.50 credits')
+  })
+
+  it('mounts the More trigger for a short reply that has stats and nothing else', () => {
+    // No speak/fork/plan handlers, so the stats are the ONLY reason the trigger
+    // exists; without them there must be no trigger at all (see "hidden without
+    // turnStats" below).
+    render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
+    expect(screen.getAllByTitle('More actions')).toHaveLength(1)
+    openStats()
+    // The trigger is the row's new control, so Copy moves in beside the stats
+    // (max-two-buttons-per-row: the row must not grow) and the header gets its
+    // separator; nothing else is offered.
+    expect(screen.getByRole('separator')).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1)
+    expect(screen.getByTestId('copy-message-menu-item')).toBeInTheDocument()
+  })
+
+  it('swaps Copy for More when the stats are the only menu reason, and keeps Copy inline once fork/plan context exists', () => {
+    // Stats-only (an app-SDK pane: no speak, no fork/plan handlers): the row
+    // used to read Copy + raw toggle; mounting More for the stats must not make
+    // it three, so Copy moves into the menu exactly as it does for Speak.
+    render(<AssistantMessage content={'x'.repeat(40)} isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
+    expect(screen.queryByTitle('Copy')).not.toBeInTheDocument()
+    const row = screen.getByTestId('toggle-raw-view').parentElement as HTMLElement
+    expect(row.querySelectorAll(':scope > button')).toHaveLength(2)
+    openStats()
+    expect(screen.getByTestId('copy-message-menu-item')).toBeInTheDocument()
+    cleanup()
+    // With fork/plan context the menu already existed on the base branch, so
+    // Copy keeps its familiar inline slot beside the stats-carrying trigger.
+    render(<AssistantMessage content={'x'.repeat(40)} isStreaming={false} slotRunning={false} onFork={vi.fn()} forkIndex={0} forkMessageId="m1" turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
+    expect(screen.getByTitle('Copy')).toBeInTheDocument()
+    openStats()
+    expect(screen.queryByTestId('copy-message-menu-item')).not.toBeInTheDocument()
   })
 
   it('puts the billed amount before the elapsed time', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
     // Collapse whitespace: the cost must read first, elapsed second.
-    const text = screen.getByTestId('turn-stats').textContent!.replace(/\s+/g, ' ').trim()
-    expect(text).toMatch(/^2\.50 credits ·\s*1m 24s$/)
+    expect(statsText()).toMatch(/^2\.50 credits ·\s*1m 24s$/)
   })
 
   it('puts the dollar cost before the elapsed time too', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 8_400, cost_usd: 0.0231 }} />)
-    const text = screen.getByTestId('turn-stats').textContent!.replace(/\s+/g, ' ').trim()
-    expect(text).toMatch(/^\$0\.02 ·\s*8\.4s$/)
+    expect(statsText()).toMatch(/^\$0\.02 ·\s*8\.4s$/)
   })
 
   it('renders cost_usd when the provider bills in dollars (no credits)', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 8_400, cost_usd: 0.0231 }} />)
-    const stats = screen.getByTestId('turn-stats')
+    const stats = openStats()
     expect(stats).toHaveTextContent('8.4s')
     expect(stats).toHaveTextContent('$0.02')
     expect(stats).not.toHaveTextContent('credits')
@@ -992,39 +1105,46 @@ describe('turn stats footer (elapsed time + credits)', () => {
 
   it('renders elapsed alone when nothing was billed', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 42_000 }} />)
-    const stats = screen.getByTestId('turn-stats')
+    const stats = openStats()
     expect(stats).toHaveTextContent('42s')
     expect(stats).not.toHaveTextContent('credits')
     expect(stats).not.toHaveTextContent('$')
   })
 
-  it('leads with the served model when the backend resolved one', () => {
+  it('leads with the served model on its own line when the backend resolved one', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5, model: 'claude-sonnet-4.6' }} />)
-    const text = screen.getByTestId('turn-stats').textContent!.replace(/\s+/g, ' ').trim()
-    expect(text).toMatch(/^claude-sonnet-4\.6 ·\s*2\.50 credits ·\s*1m 24s$/)
+    const stats = openStats()
+    // Two block children: the model line, then the numbers line. Splitting
+    // them is what keeps a long model id from widening the 210px menu.
+    const lines = Array.from(stats.children).map(el => el.textContent!.replace(/\s+/g, ' ').trim())
+    expect(lines).toEqual(['claude-sonnet-4.6', '2.50 credits · 1m 24s'])
+    expect(screen.getByTestId('turn-model')).toBe(stats.children[0])
   })
 
-  it('trims routing prefixes from the inline model label but keeps the full id in the tooltip', () => {
+  it('trims routing prefixes from the model line but keeps the full id in the tooltip', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 8_400, credits: 1.2, model: 'global.anthropic.claude-opus-4-8[1m]' }} />)
+    const stats = openStats()
     expect(screen.getByTestId('turn-model')).toHaveTextContent('claude-opus-4-8[1m]')
     expect(screen.getByTestId('turn-model')).not.toHaveTextContent('global.anthropic')
-    expect(screen.getByTestId('turn-stats').title).toContain('global.anthropic.claude-opus-4-8[1m]')
+    expect(stats.title).toContain('global.anthropic.claude-opus-4-8[1m]')
   })
 
-  it('omits the model chip when the backend did not resolve one', () => {
+  it('omits the model line when the backend did not resolve one', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 42_000, credits: 1.0 }} />)
+    openStats()
     expect(screen.queryByTestId('turn-model')).not.toBeInTheDocument()
   })
 
   // An Auto turn arrives as the literal `auto`, not a model id, because Auto's
   // per-turn choice is not disclosed on the wire. It still renders: a blank
-  // chip there is indistinguishable from a turn with no measurement at all,
-  // which is exactly the reading this chip exists to prevent.
+  // line there is indistinguishable from a turn with no measurement at all,
+  // which is exactly the reading this line exists to prevent.
   it('shows the bare auto sentinel for a turn the backend routed itself', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 6_100, credits: 0.64, model: 'auto' }} />)
+    const stats = openStats()
     expect(screen.getByTestId('turn-model')).toHaveTextContent('auto')
-    const text = screen.getByTestId('turn-stats').textContent!.replace(/\s+/g, ' ').trim()
-    expect(text).toMatch(/^auto ·\s*0\.64 credits ·\s*6\.1s$/)
+    const lines = Array.from(stats.children).map(el => el.textContent!.replace(/\s+/g, ' ').trim())
+    expect(lines).toEqual(['auto', '0.64 credits · 6.1s'])
   })
 
   // The tooltip is four whole-sentence catalog keys, one per combination of the
@@ -1034,7 +1154,7 @@ describe('turn stats footer (elapsed time + credits)', () => {
   it('spells the whole sentence in the tooltip for each billing combination', () => {
     const title = (stats: { elapsed_ms: number; credits?: number; cost_usd?: number }) => {
       const { unmount } = render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={stats} />)
-      const value = screen.getByTestId('turn-stats').getAttribute('title')
+      const value = openStats().getAttribute('title')
       unmount()
       return value
     }
@@ -1045,18 +1165,29 @@ describe('turn stats footer (elapsed time + credits)', () => {
       .toBe('Turn took 1m 24s and used 2.50 credits ($0.0231 API cost)')
   })
 
+  it('never renders the stats as a standalone footer line', () => {
+    // The old always-visible line is gone: with the menu closed there is no
+    // stats node anywhere in the message.
+    render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 84_000, credits: 2.5 }} />)
+    expect(screen.queryByTestId('turn-stats')).not.toBeInTheDocument()
+  })
+
   it('hidden while streaming', () => {
     render(<AssistantMessage content="typing…" isStreaming={true} slotRunning={true} turnStats={{ elapsed_ms: 5_000, credits: 1 }} />)
+    expect(screen.queryByTitle('More actions')).not.toBeInTheDocument()
     expect(screen.queryByTestId('turn-stats')).not.toBeInTheDocument()
   })
 
   it('hidden when showFooter is false (mid-turn assistant segment)', () => {
     render(<AssistantMessage content="segment" isStreaming={false} slotRunning={false} showFooter={false} turnStats={{ elapsed_ms: 5_000, credits: 1 }} />)
+    expect(screen.queryByTitle('More actions')).not.toBeInTheDocument()
     expect(screen.queryByTestId('turn-stats')).not.toBeInTheDocument()
   })
 
   it('hidden without turnStats (old messages persisted before the feature)', () => {
+    // No stats, a short reply, no handlers: nothing mounts the trigger.
     render(<AssistantMessage content="old" isStreaming={false} slotRunning={false} />)
+    expect(screen.queryByTitle('More actions')).not.toBeInTheDocument()
     expect(screen.queryByTestId('turn-stats')).not.toBeInTheDocument()
   })
 

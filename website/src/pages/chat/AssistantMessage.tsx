@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, memo, useRef, useId, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, Check, Volume2, Code, ClipboardList, CheckCircle, RefreshCw, ChevronLeft, ChevronRight, GitFork, Loader2, Link2, Compass, Clock, Pin, PinOff, MoreHorizontal, Share2, X } from 'lucide-react'
+import { Copy, Check, Volume2, Code, Eye, ClipboardList, CheckCircle, RefreshCw, ChevronLeft, ChevronRight, GitFork, Loader2, Link2, Compass, Pin, PinOff, MoreHorizontal, Share2, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../../components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '../../components/ui/dropdown-menu'
 import { copyToClipboard } from '../../utils/clipboard'
 import { stripKeepVisibleMarker } from '../../app-sdk/protocol/keepVisibleMarker'
 import { copySessionLink } from '../../utils/shareUrl'
@@ -171,6 +171,24 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
     onLoadEarlier()
   }, [pagingToTarget, forkIndex, loadingOlder, earlierRemaining, onLoadEarlier])
   const [rawMode, setRawMode] = useState(false)
+  // Entering raw view holds the bubble at the height the rendered view had, and
+  // the source scrolls inside that box. Raw markdown wraps differently from its
+  // rendering, so without this the footer row (and the toggle under the
+  // pointer) jumped by the height difference on every flip. Freezing the height
+  // also means the transcript virtualizer sees no row resize at all, so no
+  // reprice or bottom re-pin fires. Cleared on the way back and while streaming.
+  const [rawBoxHeight, setRawBoxHeight] = useState<number | null>(null)
+  // The pin exists for the flip itself. A viewport resize or a content change
+  // (variant switch, late edit) re-wraps the whole transcript anyway, so a
+  // snapshot taken before either would leave a wrong-sized scroll box; release
+  // it and let the raw view take its own height from then on.
+  useEffect(() => {
+    if (rawBoxHeight === null) return
+    const release = () => setRawBoxHeight(null)
+    window.addEventListener('resize', release)
+    return () => window.removeEventListener('resize', release)
+  }, [rawBoxHeight])
+  useEffect(() => { setRawBoxHeight(null) }, [content, variantIdx])
   const [localIdx, setLocalIdx] = useState<number | null>(null)
   useEffect(() => { setLocalIdx(null) }, [content, variants?.length])
 
@@ -228,6 +246,17 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
   }, [effectiveContent, isStreaming, planTaskId])
 
   const contentRef = useRef<HTMLDivElement>(null)
+  const toggleRaw = () => {
+    if (!rawMode) {
+      // Fractional, not offsetHeight: a rounded integer moves the row by up to
+      // half a pixel, which is exactly the jitter this exists to remove.
+      const measured = contentRef.current?.getBoundingClientRect().height ?? 0
+      setRawBoxHeight(measured > 0 ? measured : null)
+    } else {
+      setRawBoxHeight(null)
+    }
+    setRawMode(!rawMode)
+  }
   const selectionActions = useSelectionActions(onQuote, onAsk)
 
   const { term, caseSensitive } = useSearchHighlight()
@@ -326,14 +355,22 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
   const forkItemsInMenu = forkIndex === undefined || !!forkMessageId
   const oldMenuContext = !!(onFork || onPlanFromHere) && (shareEnabled || forkItemsInMenu)
   const hasSpeak = !!onSpeak && text.trim().length > 0
-  const menuAvailable = oldMenuContext || hasSpeak
+  // The per-turn stats (model, credits, elapsed) live in the menu, so a
+  // completed turn with a measurement always carries the trigger, even in an
+  // embedded pane with no fork/plan/speak handlers.
+  const hasTurnStats = !!turnStats && turnStats.elapsed_ms > 0
+  const menuAvailable = oldMenuContext || hasTurnStats || hasSpeak
   useEffect(() => {
     if (!menuAvailable || isStreaming || !showFooter) setOverflowOpen(false)
   }, [isStreaming, menuAvailable, showFooter])
   // A reply that previously had no overflow swaps Copy for More. That keeps the
   // footer's peer-control count unchanged while making Speak available for short
-  // replies too. Existing overflow footers retain their familiar inline Copy.
-  const copyInMenu = hasSpeak && !oldMenuContext
+  // replies too (`max-two-buttons-per-row`: a row must not grow). Existing
+  // overflow footers retain their familiar inline Copy. The stats header is a
+  // menu reason like Speak: a pane whose only trigger reason is the stats (an
+  // app-SDK reply with no fork/plan context) also swaps Copy for More, so the
+  // row that used to read Copy + raw toggle now reads raw toggle + More.
+  const copyInMenu = (hasSpeak || hasTurnStats) && !oldMenuContext
   const copyMessage = () => {
     const stripped = stripKeepVisibleMarker(steerCleaned)
     copyToClipboard(stripped === steerCleaned ? stripped : stripped.trimEnd()).then((ok) => {
@@ -364,6 +401,30 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[210px]">
+          {hasTurnStats && (<>
+            {/* Two short lines, not one: the model id is the longest piece and
+                would push a 210px menu wide on its own. Model on top (what
+                served), then cost before elapsed (credits are the resource
+                users budget). The FULL untrimmed model id stays on the title,
+                as it did on the old footer line. No `font-mono` on the numbers
+                line: it is a measurement, not code, and `font-mono` would pin
+                `var(--mono)` over the Font Family setting; `tabular-nums`
+                keeps the digits fixed-width regardless. */}
+            <DropdownMenuLabel data-testid="turn-stats" title={turnStatsTitle} className="font-normal text-[12px] leading-[18px] tabular-nums select-text">
+              {turnStats.model && <div className="font-mono truncate text-text/80" data-testid="turn-model">{fmtTurnModel(turnStats.model)}</div>}
+              <div>
+                {(() => {
+                  const credits = turnStats.credits ?? 0
+                  const cost = turnStats.cost_usd ?? 0
+                  const billed = credits > 0
+                    ? `${fmtCredits(credits)} credits`
+                    : cost > 0 ? `$${cost.toFixed(cost < 0.01 ? 4 : 2)}` : ''
+                  return billed ? `${billed} · ${fmtTurnElapsed(turnStats.elapsed_ms)}` : fmtTurnElapsed(turnStats.elapsed_ms)
+                })()}
+              </div>
+            </DropdownMenuLabel>
+            {(copyInMenu || hasSpeak || oldMenuContext) && <DropdownMenuSeparator />}
+          </>)}
           {copyInMenu && (
             <DropdownMenuItem
               data-testid="copy-message-menu-item"
@@ -403,6 +464,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
               // so the unavailable reason stays reachable through aria-disabled.
               aria-disabled={forkIndex === undefined || busyAction !== null || undefined}
               aria-describedby={forkIndex === undefined ? `${reasonId}-fork` : undefined}
+              // Same 40px touch floor as Speak, so the items sit at one rhythm on a phone.
               className="flex-col items-start gap-0.5"
               data-testid="fork-from-here"
               onSelect={(e) => {
@@ -456,7 +518,9 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
 
   return <div data-role="assistant" className="group/msg">
     {/* 'message-bubble' is a stable theming hook — see website/docs/theming-contract.md */}
-    <div ref={contentRef} className="message-bubble msg-content group/bubble relative text-sm leading-6 text-text overflow-hidden" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+    <div ref={contentRef} className="message-bubble msg-content group/bubble relative text-sm leading-6 text-text overflow-hidden" data-testid="message-bubble" style={rawMode && rawBoxHeight !== null && !isStreaming
+      ? { overflowWrap: 'anywhere', wordBreak: 'break-word', height: rawBoxHeight, overflowY: 'auto' }
+      : { overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
       <MessageErrorBoundary rawContent={smoothedText}>
         <MarkdownRenderer content={smoothedText} streaming={isStreaming} onFileOpen={onFileOpen} onFolderOpen={onFolderOpen} onArtifactOpen={onArtifactOpen} onSessionOpen={onSessionOpen} sessions={sessions} activeSession={activeSession} rawMode={rawMode} messageTs={messageTs} slotKey={slotKey} glow={isStreaming} smooth={smooth} linkPreviews={linkPreviews && !draining} collapseDiffs mdCardToggle />
       </MessageErrorBoundary>
@@ -506,34 +570,10 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
          are directly compatible: extra optional params are ignored. */
       <FileChangeChips fileChanges={fileChanges} onOpenDiff={onOpenDiff} onFileOpen={onFileOpen} style={fileChipStyle} artifactPaths={artifactPaths} disclosureKey={messageTs ? `fcc-${messageTs}` : undefined} />
     )}
-    {!isStreaming && showFooter && turnStats && turnStats.elapsed_ms > 0 && (
-      /* No `font-mono`: "1.98 credits · 59s" is a labelled measurement, not
-         code, and Tailwind's `font-mono` pins `var(--mono)` — a token the Font
-         Family setting never writes, so this line ignored the user's choice.
-         `tabular-nums` stays: fixed-width digits are what the mono was earning
-         here, and it works in a proportional face too. */
-      <div className="flex items-center gap-1 mt-1 text-[11px] leading-4 text-muted/60 tabular-nums" data-testid="turn-stats" title={turnStatsTitle}>
-        {/* Cost leads, elapsed trails: credits are the scarce resource users
-            actually budget, so they read first. The clock icon travels WITH the
-            elapsed value (never leads the line) so it never appears to label
-            the credit figure. */}
-        {(() => {
-          const credits = turnStats.credits ?? 0
-          const cost = turnStats.cost_usd ?? 0
-          const billed = credits > 0
-            ? `${fmtCredits(credits)} credits`
-            : cost > 0 ? `$${cost.toFixed(cost < 0.01 ? 4 : 2)}` : ''
-          return <>
-            {/* Model leads (what served), then cost (what it took), then time.
-                Trimmed for width; the untrimmed id is in the footer tooltip. */}
-            {turnStats.model && <span className="font-mono" data-testid="turn-model">{fmtTurnModel(turnStats.model)} ·</span>}
-            {billed && <span>{billed} ·</span>}
-            <Clock size={11} aria-hidden="true" />
-            <span>{fmtTurnElapsed(turnStats.elapsed_ms)}</span>
-          </>
-        })()}
-      </div>
-    )}
+    {/* The per-turn stats (model · credits · elapsed) used to sit here as an
+        always-visible line under every completed turn. They now live at the
+        top of the More menu, so a finished reply ends at its content and the
+        footer is a single hover-revealed action row. */}
     {/* Where the pointer cannot hover, the footer's descendant overrides grow
         every action to a 40px touch target (20px icon + 10px padding); pointer
         devices keep the compact 14px icons untouched. */}
@@ -555,8 +595,11 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
             controls taxed chats the bound never touched. */}
         {onFork && forkIndex !== undefined && !forkMessageId && <button className={ROW_ACTION_CLS} disabled={busyAction !== null} data-testid="fork-from-here" title={forkLabel} aria-label={forkLabel} onClick={() => { void runForkAction() }}>{busyAction === 'fork' ? <Loader2 size={14} className="animate-spin" /> : <GitFork size={14} />}</button>}
         {onPlanFromHere && forkIndex !== undefined && !forkMessageId && <button className={ROW_ACTION_CLS} disabled={busyAction !== null} data-testid="plan-from-here" title={planLabel} aria-label={planLabel} onClick={() => { void runPlanAction() }}>{busyAction === 'plan' ? <Loader2 size={14} className="animate-spin" /> : <ClipboardList size={14} />}</button>}
-        {/* Raw mode stays visible; Speak lives in More so adding voice never grows the row. */}
-        {text.length > 20 && <button className={`p-0.5 rounded transition-colors flex items-center gap-0.5 text-[11px] leading-4 ${rawMode ? 'text-text' : 'text-muted hover:text-text'}`} title={rawMode ? i18nT('pages.chat.assistantMessage.rendered_view') : i18nT('pages.chat.assistantMessage.raw_markdown')} aria-label={rawMode ? i18nT('pages.chat.assistantMessage.switch_to_rendered_view') : i18nT('pages.chat.assistantMessage.switch_to_raw_markdown_view')} onClick={() => setRawMode(!rawMode)}><Code size={14} />{rawMode ? i18nT('pages.chat.assistantMessage.rendered') : i18nT('pages.chat.assistantMessage.raw')}</button>}
+        {/* Icon-only, like every other row action. State is carried the way the
+            pin button carries it: the glyph names the view a click will GET
+            (code brackets while rendered, an eye for "preview" while raw) and
+            aria-pressed says which one is showing. Speak lives in More. */}
+        {text.length > 20 && <button className={`p-0.5 rounded transition-colors ${rawMode ? 'text-text' : 'text-muted hover:text-text'}`} aria-pressed={rawMode} data-testid="toggle-raw-view" title={rawMode ? i18nT('pages.chat.assistantMessage.rendered_view') : i18nT('pages.chat.assistantMessage.raw_markdown')} aria-label={rawMode ? i18nT('pages.chat.assistantMessage.switch_to_rendered_view') : i18nT('pages.chat.assistantMessage.switch_to_raw_markdown_view')} onClick={toggleRaw}>{rawMode ? <Eye size={14} /> : <Code size={14} />}</button>}
         {onRegenerate && !slotRunning && <button className="text-muted hover:text-text p-0.5 rounded transition-colors" title={i18nT('pages.chat.assistantMessage.regenerate')} aria-label={i18nT('pages.chat.assistantMessage.regenerate_response')} onClick={onRegenerate}><RefreshCw size={14} /></button>}
         {hasVariants && (() => {
           const curIdx = activeIdx

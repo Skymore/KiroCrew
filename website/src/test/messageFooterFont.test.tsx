@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import AssistantMessage from '../pages/chat/AssistantMessage'
 import { fmtMessageTime, fmtMessageTimeFull } from '../pages/chat/messageTime'
 
@@ -15,18 +15,25 @@ import { fmtMessageTime, fmtMessageTimeFull } from '../pages/chat/messageTime'
  * proportional face too.
  */
 describe('message footer follows the Font Family setting', () => {
-  it('does not pin the turn-stats line to font-mono', () => {
+  // The turn stats live in the More menu's header now (still chrome, still
+  // under the Font Family setting), so each read opens the menu first.
+  const openStats = () => {
+    fireEvent.pointerDown(screen.getByTitle('More actions'), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    return screen.getByTestId('turn-stats')
+  }
+
+  it('does not pin the turn-stats header to font-mono', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 59_000, credits: 1.98 }} />)
-    const stats = screen.getByTestId('turn-stats')
+    const stats = openStats()
     expect(stats.className).not.toContain('font-mono')
-    // Guards against asserting on an empty node: the line still renders.
+    // Guards against asserting on an empty node: the header still renders.
     expect(stats).toHaveTextContent('1.98 credits')
     expect(stats).toHaveTextContent('59s')
   })
 
-  it('keeps tabular-nums on the turn-stats line so digits stay fixed-width', () => {
+  it('keeps tabular-nums on the turn-stats header so digits stay fixed-width', () => {
     render(<AssistantMessage content="done" isStreaming={false} slotRunning={false} turnStats={{ elapsed_ms: 59_000, credits: 1.98 }} />)
-    expect(screen.getByTestId('turn-stats').className).toContain('tabular-nums')
+    expect(openStats().className).toContain('tabular-nums')
   })
 
   it('does not pin the timestamp to font-mono, and titles it with the full date', () => {
