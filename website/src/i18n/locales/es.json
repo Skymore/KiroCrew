@@ -6059,6 +6059,10 @@
       "judge_no_verdict": "aún sin veredicto"
     },
     "bottomTerminalPanel": {
+      "close_all_tabs": "Cerrar todas las pestañas",
+      "close_other_tabs": "Cerrar otras pestañas",
+      "close_tab": "Cerrar",
+      "close_tabs_to_right": "Cerrar las pestañas de la derecha",
       "close_terminal": "Cerrar la terminal",
       "focus_popout": "Enfocar la ventana emergente",
       "hide_terminal_panel": "Ocultar el panel de la terminal",
