@@ -1842,6 +1842,9 @@ does not. In split view the geometric top-left pane also stands in for the
 single-chat title row at the other corner: on desktop it clears the shell's
 sessions-sidebar toggle while the sidebar is collapsed, on mobile it renders
 that toggle inline, so the sessions list stays reachable from a split.
+Every split pane except the focused one is dimmed by a background-coloured
+overlay at `--pane-dim-opacity`, which fades as focus moves; a pane outside split
+view is never dimmed.
 When the workspace is open, its fullscreen control lives in the panel's own
 action group beside the ⋯ menu, never among the fixed toggles: right-docked, in
 fullscreen, and on mobile it is a button in the slot the close X vacates while

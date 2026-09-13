@@ -397,6 +397,17 @@ through `SplitGlyph`, with `open` following the pressed state; do not swap in
 lucide's `PanelRight` / `PanelBottom`, which puts two renderings of "a panel"
 on one row.
 
+Split view marks focus by dimming every other pane, not by recolouring it:
+`PaneDim` lays a background-coloured rectangle over the pane at
+`--pane-dim-opacity` (0.4), the way Ghostty fades an unfocused split, so
+message text, code highlighting and status colours keep their own values
+underneath and only the whole pane reads as "not the one with focus". The
+overlay is always mounted while the pane knows its focus state (opacity 0 when
+focused, so the cue fades both ways), sits at `z-20` between the title row and
+the drop overlay, and takes no pointer events, so the click that claims focus
+lands on the pane. A pane outside split view (`focused` undefined) never mounts
+it. The placeholder pane keeps its accent dot as well.
+
 Title rows are flex-flow chrome, not overlays, and carry no page-level
 z-index. A pane root opens no stacking context, so a z-index on its title row
 competes with the shell: the mobile workspace panel is `z-[47]` and the

@@ -13,6 +13,7 @@ import ChatInput, { type ComposerBusyMode } from './ChatInput'
 import ErrorNotice from './ErrorNotice'
 import { Btn } from './ui'
 import ChatDropOverlay, { useChatFileDrop } from './ChatDropOverlay'
+import PaneDim from './PaneDim'
 
 /** What the top-left split pane does about the shell's sidebar toggle — see
  *  ChatPane's `leading` prop. */
@@ -1223,6 +1224,11 @@ export default function ChatPane({
         </div>
         )}
 
+        {/* Split view only: `focused` is a boolean from the grid. A pane that
+            owns the whole surface (undefined) is never dimmed. Sits above the
+            title row (z-10) and the message chrome, below the drop overlay
+            (z-[60]) and every shell layer (>= 46). */}
+        {focused !== undefined && <PaneDim dimmed={!focused} />}
         <ChatDropOverlay active={dragOver} />
 
         {/* Zero-height anchor so the top fade overlays the scroller's first

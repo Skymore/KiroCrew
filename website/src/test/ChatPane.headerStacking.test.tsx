@@ -104,6 +104,24 @@ describe('ChatPane title row stacking', () => {
  * stationary button (reserved column + the same hairline the title row
  * draws), on mobile it renders the toggle inline. Any other pane, and a pane
  * outside split view, starts its row at its own inset. */
+describe('ChatPane focus dim', () => {
+  it('never mounts the dim overlay outside split view', () => {
+    const { container } = mount()
+    expect(container.querySelector('[data-pane-dim]')).toBeNull()
+  })
+
+  it.each([true, false])('mounts the overlay in split view, dimmed unless focused: %s', focused => {
+    const { container } = mount({ focused })
+    const dim = container.querySelector('[data-pane-dim]') as HTMLElement
+    expect(dim).not.toBeNull()
+    expect(dim.dataset.paneDim).toBe(focused ? 'off' : 'on')
+    // Above the title row (z-10) and message chrome, below every shell layer.
+    const z = Number((dim.className.match(/\bz-(\d+)/) ?? [])[1])
+    expect(z).toBeGreaterThan(10)
+    expect(z).toBeLessThan(SHELL_OVERLAY_FLOOR)
+  })
+})
+
 describe('ChatPane title row leading edge', () => {
   const row = (container: HTMLElement) => container.querySelector('.panel-toolbar') as HTMLElement
 

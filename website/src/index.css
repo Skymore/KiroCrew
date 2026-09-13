@@ -2829,10 +2829,19 @@ html[data-font-family="opendyslexic"] .nav-item {
 
 /* Shared geometry for chat, workspace and terminal title actions. */
 :root {
+  /* Unfocused split-view panes: opacity of the background-coloured overlay
+     PaneDim lays over them (0 = no dimming). Ghostty dims unfocused splits at
+     0.3 of background; a chat pane is mostly empty background, on which the
+     overlay is invisible, so only its text carries the cue and it needs more
+     to read at a glance. 0.4 was chosen by eye on the dogfood build. */
+  --pane-dim-opacity: 0.4;
   --panel-toolbar-height: 44px;
   --panel-toolbar-button-size: 28px;
   --panel-toolbar-icon-size: 16px;
   --panel-toolbar-gap: 6px;
+  /* Clearance on each side of the hairline that separates a header's own
+     controls from the shell's toggles (and the sidebar toggle from a title). */
+  --panel-toolbar-divider-gap: 8px;
 }
 [data-session-grid-view],
 [data-panel-toggle-owner="chat"]:has([data-session-grid-view]) [data-workspace-panel-controls] {

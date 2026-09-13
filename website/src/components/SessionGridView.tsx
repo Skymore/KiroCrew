@@ -4,9 +4,10 @@ import { X, Plus, GitFork, Loader2, Circle } from 'lucide-react'
 import { SplitGlyph } from './SplitGlyph'
 import { api } from '../api/client'
 import SessionGridLayout from './SessionGridLayout'
-import ChatPane from './ChatPane'
+import ChatPane, { type PaneLeading } from './ChatPane'
 import { useSessionGrid, type GridLeaf } from '../hooks/useSessionGrid'
 import { emitSlotFocused } from '../hooks/useWebSocket'
+import PaneDim from './PaneDim'
 
 import { i18nT } from '../i18n/t'
 type Slot = {
@@ -284,6 +285,8 @@ function PlaceholderPane({
           </button>
         </div>
       </div>
+      {/* After the header so the header stays the first child (tests locate it that way); absolute, so order does not change what paints where. */}
+      <PaneDim dimmed={!focused} />
       <div className="p-2 border-b border-border">
         <input
           autoFocus={focused}

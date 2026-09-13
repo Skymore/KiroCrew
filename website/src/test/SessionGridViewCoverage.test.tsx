@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import SessionGridView from '../components/SessionGridView'
+import PaneDim from '../components/PaneDim'
 import { renderWithProviders } from './helpers'
 import { api } from '../api/client'
 import { emitSlotFocused } from '../hooks/useWebSocket'
@@ -55,6 +56,7 @@ vi.mock('../components/ChatPane', () => ({
   }) => (
     <div data-testid={`pane-${slotKey}`} data-focused={focused ? 'yes' : 'no'} data-hosts-panel-controls={hostsPanelControls ? 'yes' : 'no'} data-leading={leading ? (leading.inset ? 'inset' : 'control') : 'none'}>
       {leading?.control}
+      {focused !== undefined && <PaneDim dimmed={!focused} />}
       <button type="button" aria-label={`focus ${slotKey}`} onClick={onFocus} />
       <button type="button" aria-label={`remove ${slotKey}`} onClick={onRemove} />
       <button type="button" aria-label={`right ${slotKey}`} onClick={onSplitRight} />
@@ -246,6 +248,26 @@ describe('SessionGridView — entry seeding', () => {
     const pickerHeader = onlyPicker().firstElementChild as HTMLElement
     expect(pickerHeader.className).toContain('pl-[56px]')
     expect(pickerHeader.querySelector('[data-pane-leading-divider]')).not.toBeNull()
+  })
+
+  // Ghostty-style focus cue: every pane that is not the focused one carries
+  // a background-coloured overlay at --pane-dim-opacity; the focused pane's
+  // overlay is at 0. Clicking a dim pane claims focus and the cue moves.
+  it('dims every pane except the focused one, and follows focus', async () => {
+    seedStore('a', { type: 'split', id: 'root', dir: 'col', sizes: [0.5, 0.5], children: [leaf('l-a', 'a'), leaf('l-b', 'b')] })
+    seedApi([{ key: 'a' }, { key: 'b' }])
+    renderGrid('a')
+    await screen.findByTestId('pane-b')
+    const dimOf = (id: string) => screen.getByTestId(`pane-${id}`).querySelector('[data-pane-dim]') as HTMLElement
+    expect(dimOf('a').dataset.paneDim).toBe('off')
+    expect(dimOf('a').style.opacity).toBe('0')
+    expect(dimOf('b').dataset.paneDim).toBe('on')
+    expect(dimOf('b').style.opacity).toBe('var(--pane-dim-opacity)')
+    expect(dimOf('b').className).toContain('pointer-events-none')
+
+    fireEvent.click(screen.getByRole('button', { name: 'focus b' }))
+    await waitFor(() => expect(dimOf('b').dataset.paneDim).toBe('off'))
+    expect(dimOf('a').dataset.paneDim).toBe('on')
   })
 
   it('renders the empty pane without card chrome', () => {
