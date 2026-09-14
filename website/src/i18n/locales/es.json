@@ -6950,7 +6950,6 @@
       "close": "Cerrar"
     },
     "modelDropdownList": {
-      "auto_default": "Predeterminado",
       "credit_multiplier": "{{value}} el coste en créditos de Auto",
       "credit_multiplier_baseline": "{{value}}, el coste en créditos de referencia",
       "no_matches": "Sin coincidencias"

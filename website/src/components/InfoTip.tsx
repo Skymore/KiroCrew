@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
+import { Info } from 'lucide-react'
 
 import { i18nT } from '../i18n/t'
 
-/** Tiny ? button that shows a tooltip on click. Portal-rendered to escape overflow clipping. */
-export default function InfoTip({ text, placement = 'auto' }: { text: string; placement?: 'auto' | 'top' }) {
+/** Tiny help button that shows a tooltip on click. Portal-rendered to escape overflow clipping. */
+export default function InfoTip({ text, placement = 'auto', icon = 'help' }: { text: string; placement?: 'auto' | 'top'; icon?: 'help' | 'info' }) {
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -61,7 +62,7 @@ export default function InfoTip({ text, placement = 'auto' }: { text: string; pl
         onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
         className="w-4 h-4 rounded-full border border-border text-muted text-[10px] hover:text-text hover:border-text/30 transition-all leading-none cursor-pointer flex items-center justify-center shrink-0"
         title={text}
-      >?</button>
+      >{icon === 'info' ? <Info className="lucide-inline" /> : '?'}</button>
       {open && createPortal(
         <div
           ref={tipRef}

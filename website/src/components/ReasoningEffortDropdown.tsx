@@ -26,8 +26,8 @@ interface Props {
   slot: string
   currentEffort: string
   /** Configured default effort for new sessions ('' = none). The slot's own
-   *  value stays the source of truth for the toggle — this only labels what the
-   *  no-override state actually inherits. */
+   *  value stays the source of truth for the toggle. Enabling inheritance moves
+   *  the thumb to this level immediately when it is available. */
   defaultEffort?: string
   /** Kept for call-site compatibility; the slider stays open while adjusting
    *  and the popover dismisses on outside-click, so this is no longer invoked. */
@@ -82,17 +82,19 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
   const [isDefault, setIsDefault] = useState(propDefault)
   useEffect(() => { setIsDefault(propDefault) }, [propDefault])
 
-  // idx = the concrete level the slider points at. Persists while Default is on
-  // so toggling Default off restores the user's last explicit pick.
-  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : Math.min(2, maxIdx))
-  useEffect(() => { if (currentIdx >= 0) setIdx(currentIdx) }, [currentIdx])
-  useEffect(() => { setIdx(prev => Math.min(prev, maxIdx)) }, [maxIdx])
+  // idx is the concrete level shown by the thumb, including an inherited default.
+  const [idx, setIdx] = useState(() => currentIdx >= 0 ? currentIdx : (defaultIdx >= 0 ? defaultIdx : Math.min(2, maxIdx)))
+  useEffect(() => {
+    if (currentIdx >= 0) setIdx(currentIdx)
+    else if (propDefault && defaultIdx >= 0) setIdx(defaultIdx)
+  }, [currentIdx, propDefault, defaultIdx])
   // Async failures must restore the latest authoritative props, not the values
-  // captured when a debounced pick started. Keep the concrete selection while
-  // Default is authoritative: it is intentionally remembered for the next
-  // time the user disables Default.
-  const authoritativeRef = useRef({ isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx })
-  authoritativeRef.current = { isDefault: propDefault, idx: currentIdx >= 0 ? currentIdx : idx }
+  // captured when a debounced pick started.
+  const authoritativeIdx = currentIdx >= 0
+    ? currentIdx
+    : (propDefault && defaultIdx >= 0 ? defaultIdx : idx)
+  const authoritativeRef = useRef({ isDefault: propDefault, idx: authoritativeIdx })
+  authoritativeRef.current = { isDefault: propDefault, idx: authoritativeIdx }
 
   // Persist one level pick through the shared switch protocol (#4523): the
   // local optimistic state above masks staleness in THIS popover, but the
@@ -169,7 +171,11 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
   }
 
   const handleSlide = (next: number) => { setIsDefault(false); setIdx(next); commit(concrete[next] ?? '') }
-  const handleToggleDefault = (useDefault: boolean) => { setIsDefault(useDefault); commit(useDefault ? '' : (concrete[idx] ?? '')) }
+  const handleToggleDefault = (useDefault: boolean) => {
+    setIsDefault(useDefault)
+    if (useDefault && defaultIdx >= 0) setIdx(defaultIdx)
+    commit(useDefault ? '' : (concrete[idx] ?? ''))
+  }
 
   // In the no-override state, name what is actually inherited. A bare "Default"
   // implied the model picks its own effort, which is false once a default is
@@ -214,13 +220,12 @@ export default function ReasoningEffortDropdown({ slot, currentEffort, defaultEf
         step={1}
         value={idx}
         onChange={handleSlide}
-        disabled={isDefault}
         emphasizeMax={!isDefault}
         markerValue={defaultIdx >= 0 ? defaultIdx : undefined}
         markerLabel={defaultIdx >= 0 ? i18nT('components.reasoningEffortDropdown.configured_default_marker') : undefined}
         formatValue={v => effortLabel(concrete[v] ?? '')}
       />
-      <div className={`relative mt-1 h-[14px] select-none text-[10px] text-muted transition-opacity ${isDefault ? 'opacity-40' : ''}`}>
+      <div className="relative mt-1 h-[14px] select-none text-[10px] text-muted">
         <span className="absolute left-0">{i18nT('components.reasoningEffortDropdown.faster')}</span>
         <span className="absolute right-0">{i18nT('components.reasoningEffortDropdown.smarter')}</span>
       </div>

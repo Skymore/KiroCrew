@@ -5,6 +5,7 @@ import { isPricedMultiplier } from '../providers/modelList'
 import type { ModelInfo } from '../providers/types'
 import { fmtNumber } from '../i18n/format'
 import { i18nT } from '../i18n/t'
+import InfoTip from './InfoTip'
 
 /**
  * A row this list can render. Derived from `ModelInfo` rather than re-declared,
@@ -103,11 +104,13 @@ const TIER_BORDER: Record<ReturnType<typeof costTier>, string> = {
   premium: 'border-warn',
 }
 
+const INTERNAL_DESCRIPTION_PREFIX = /^\[Internal\]\s*/i
+
 /** Shared model list used in dropdown portals across AgentsPage and ChatPage */
 export default function ModelDropdownList({ models, activeModel, onSelect }: {
   models: ModelItem[]; activeModel: string; onSelect: (name: string) => void
 }) {
-  const activeRef = useRef<HTMLButtonElement>(null)
+  const activeRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' })
   }, [])
@@ -116,10 +119,32 @@ export default function ModelDropdownList({ models, activeModel, onSelect }: {
       {models.map(m => {
         const active = activeModel === m.name
         const mult = m.rateMultiplier
+        const internalPrefix = m.description?.match(INTERNAL_DESCRIPTION_PREFIX)?.[0]
+        const descriptionDetail = internalPrefix
+          ? m.description!.slice(internalPrefix.length).trim()
+          : m.description?.trim() ?? ''
         return (
-          <button key={m.name} ref={active ? activeRef : undefined} role="option" aria-selected={active} tabIndex={-1} className={`w-full text-left px-2.5 py-2 flex flex-col gap-0.5 rounded-md cursor-pointer transition-all border-none bg-transparent ${active ? 'bg-accent-subtle' : 'hover:bg-bg-hover'}`} onClick={() => onSelect(m.name)}>
+          <div
+            key={m.name}
+            ref={active ? activeRef : undefined}
+            role="option"
+            aria-selected={active}
+            tabIndex={-1}
+            className={`w-full text-left px-2.5 py-2 flex flex-col gap-0.5 rounded-md cursor-pointer transition-all border-none bg-transparent ${active ? 'bg-accent-subtle' : 'hover:bg-bg-hover'}`}
+            onClick={() => onSelect(m.name)}
+            onKeyDown={event => {
+              if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault()
+                onSelect(m.name)
+              }
+            }}
+          >
             <div className="flex items-center gap-2">
-              <span data-model-name className={`text-[13px] font-mono font-semibold truncate ${active ? 'text-accent' : 'text-text'}`}>{m.name}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span data-model-name className={`text-[13px] font-mono font-semibold truncate ${active ? 'text-accent' : 'text-text'}`}>{m.name}</span>
+                {internalPrefix && <span data-model-internal className="shrink-0 text-[10px] text-muted">{internalPrefix.trim()}</span>}
+                {descriptionDetail && <InfoTip text={descriptionDetail} icon="info" />}
+              </span>
               {active && <span className="text-accent text-[12px]"><Check className="lucide-inline" /></span>}
               {/* Credit multiplier. Rendered only when the backend reported a
                   usable one — a cold-start or pre-feature cached row has none,
@@ -150,15 +175,7 @@ export default function ModelDropdownList({ models, activeModel, onSelect }: {
                 </span>
               )}
             </div>
-            {/* Auto's label is a catalog key resolved HERE, not a literal carried
-                on the row: kiro's own Auto description is long enough to unbalance
-                the list, and translating it at fetch time would freeze the language
-                in the React Query cache. Static key, so it stays statically
-                resolvable for check-i18n-keys. */}
-            {m.name === 'auto'
-              ? <span className="text-[12px] text-muted leading-tight">{i18nT('components.modelDropdownList.auto_default')}</span>
-              : m.description && <span className="text-[12px] text-muted leading-tight">{m.description}</span>}
-          </button>
+          </div>
         )
       })}
       {models.length === 0 && <div className="px-3 py-2 text-[13px] text-muted italic">{i18nT('components.modelDropdownList.no_matches')}</div>}

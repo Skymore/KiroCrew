@@ -77,7 +77,9 @@ the cheaper model's output as the one they asked for.
   as already configured. Select-all and deselect-all update the current advertised
   set with one write, keep `auto` selected, and preserve hidden IDs absent from the
   current catalog. Enabling the configured effort default moves the slider thumb to
-  that level before the setting write completes.
+  that level before the setting write completes. Moving the slider while default
+  mode is active clears the default toggle and persists the selected level as the
+  session override.
 - **Pin a cheaper model** only through `agent.role_models.<role>` (`background`,
   `subagent`), read by `AgentConfig.resolve_model(role)` in `config/sections.py`. Roles
   default to `"auto"` and deliberately do NOT inherit `agent.model`, so a user's chat

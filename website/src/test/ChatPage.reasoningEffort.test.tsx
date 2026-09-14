@@ -325,15 +325,15 @@ describe('ReasoningEffortDropdown', () => {
     await vi.waitFor(() => expect(slider.getAttribute('aria-valuemax')).toBe('4'))
   })
 
-  it('disables the slider while the default mode is active', async () => {
+  it('lets a slider pick replace the active default with a session override', async () => {
     renderDropdown({ currentEffort: '' })
     const toggle = await screen.findByRole('switch', { name: 'Use model default' })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
-    expect(slider.getAttribute('aria-disabled')).toBe('true')
+    expect(slider.getAttribute('aria-disabled')).toBeNull()
     fireEvent.keyDown(slider, { key: 'ArrowRight' })
-    expect(toggle.getAttribute('aria-checked')).toBe('true')
-    expect(mockApi.chatSlotReasoningEffort).not.toHaveBeenCalled()
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'xhigh'))
   })
 
   it('toggling default on persists the empty sentinel; off persists a concrete level', async () => {
@@ -375,12 +375,13 @@ describe('ReasoningEffortDropdown', () => {
     renderDropdown({ currentEffort: '', defaultEffort: 'max' })
     const slider = await screen.findByRole('slider', { name: 'Reasoning effort' })
     await vi.waitFor(() => expect(slider.getAttribute('aria-valuemax')).toBe('1'))
+    expect(slider).toHaveAttribute('aria-valuetext', 'Max')
     const toggle = screen.getByRole('switch', { name: 'Use configured default' })
     fireEvent.click(toggle)
     await vi.waitFor(() => expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', 'max'))
   })
 
-  it('keeps the remembered concrete pick while persisting default inheritance', async () => {
+  it('moves to the configured default before persistence and rolls back a rejected inheritance write', async () => {
     vi.useFakeTimers()
     let rejectWrite!: (error: Error) => void
     mockApi.chatSlotReasoningEffort.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectWrite = reject }))
@@ -392,13 +393,13 @@ describe('ReasoningEffortDropdown', () => {
       expect(slider).toHaveAttribute('aria-valuetext', 'Low')
       fireEvent.click(toggle)
       expect(toggle).toHaveAttribute('aria-checked', 'true')
-      expect(slider).toHaveAttribute('aria-disabled', 'true')
-      expect(slider).toHaveAttribute('aria-valuenow', '0')
-      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      expect(slider).not.toHaveAttribute('aria-disabled')
+      expect(slider).toHaveAttribute('aria-valuenow', '2')
+      expect(slider).toHaveAttribute('aria-valuetext', 'High')
       expect(mockApi.chatSlotReasoningEffort).not.toHaveBeenCalled()
       await act(async () => { await vi.advanceTimersByTimeAsync(150) })
       expect(mockApi.chatSlotReasoningEffort).toHaveBeenCalledWith('s1', '')
-      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      expect(slider).toHaveAttribute('aria-valuetext', 'High')
       await act(async () => { rejectWrite(new Error('save failed')); await vi.advanceTimersByTimeAsync(0) })
       expect(toggle).toHaveAttribute('aria-checked', 'false')
       expect(slider).toHaveAttribute('aria-valuetext', 'Low')

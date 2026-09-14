@@ -6746,7 +6746,6 @@
       "close": "닫기"
     },
     "modelDropdownList": {
-      "auto_default": "기본값",
       "credit_multiplier": "Auto 크레딧 비용의 {{value}}",
       "credit_multiplier_baseline": "{{value}}, 기준 크레딧 비용",
       "no_matches": "일치 항목 없음"
