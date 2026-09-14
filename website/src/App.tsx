@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, createContext, lazy, Suspense, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo, createContext, lazy, Suspense, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -42,7 +42,7 @@ import ErrorNotice from './components/ErrorNotice'
 import { PREVIEW_EXPAND_EVENT } from './components/WebPreviewPanel'
 import { useMobileConnect, MobileConnectDialog } from './shell/nav/mobileConnect'
 import { useMayLeaveForNavigation, useIsCurrentUrl } from './components/NavigationLeaveGuard'
-import { motion, useMotionValue, useTransform } from 'framer-motion'
+import { motion, useMotionValue, useTransform, useReducedMotion } from 'framer-motion'
 import { useDrawerSwipe, animateDrawer, registerDrawerTargets, takeOverDrawer, safeAreaLeft } from './hooks/useDrawerSwipe'
 
 /** Mobile nav drawer travel: its 220px width + the 8px mx-2 inset + border. */
@@ -120,6 +120,7 @@ import { IS_MAC } from './hooks/useKeyboardShortcuts'
 import { useNavShortcutHint } from './hooks/useNavShortcutHint'
 import { useShellKeyboard } from './shell/shortcuts/shellKeyboard'
 import { MobileNavRailContext, type MobileNavRailOptions } from './components/MobileNavRailContext'
+import { WorkspacePanelContext, WorkspaceFullscreenContext } from './components/WorkspacePanelContext'
 import ShortcutsModal from './components/ShortcutsModal'
 import QuickSearchSurface from './components/QuickSearchSurface'
 import ReportProblemModal from './components/ReportProblemModal'
@@ -873,6 +874,12 @@ export default function App() {
   // every mousemove during a grip-drag, and a primitive snapshot lets
   // useSyncExternalStore's Object.is check skip those re-renders of App.
   const bottomTerminalOpen = useBottomTerminalOpen()
+  const workspacePanelOpen = useAppSelector(s => s.chat.activityOpen)
+  const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false)
+  const reduceWorkspaceMotion = useReducedMotion()
+  const [workspaceFullscreen, setWorkspaceFullscreen] = useState(false)
+  const exitWorkspaceFullscreen = useCallback(() => setWorkspaceFullscreen(false), [])
+  const toggleWorkspaceFullscreen = useCallback(() => setWorkspaceFullscreen(value => !value), [])
   const mobileConnect = useMobileConnect(location.key)
   const { mobileConnectOpen, setMobileConnectOpen, hasRenderableMobileConnect } = mobileConnect
   // Selected session's project directory: a terminal opened from the nav row
@@ -1269,7 +1276,7 @@ export default function App() {
   const { appBadges, discoverBadges, railAppBadges, railAppRunStates } = useRailBadges(approvalCount)
 
   const { shortcutsOpen, setShortcutsOpen, toggleShortcutsModal, commandPalette, agentSwitchNotice } = useShellKeyboard({
-    toggleFocusMode, toggleNav: () => toggleNav(), terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject,
+    toggleFocusMode, toggleNav: () => toggleNav(), terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject, exitWorkspaceFullscreen,
   })
 
   const { kiroUsageOpen, setKiroUsageOpen, kiroUsageState, kiroCreditSurface, kiroAccountEntry } = useKiroUsageReadout()
@@ -1428,6 +1435,14 @@ export default function App() {
   // are not rendered here: search and the main destinations live in the rail
   // the chat page's sessions drawer shows (see `mobileNavRail` below).
   const mobileSingle = isMobile && isChat
+  const panelFullscreen = workspaceFullscreen && isChat && !isMobile && workspacePanelOpen && !workspaceSearchOpen
+  const workspaceFullscreenControls = useMemo(
+    () => ({ fullscreen: panelFullscreen, exit: exitWorkspaceFullscreen, toggle: toggleWorkspaceFullscreen }),
+    [panelFullscreen, exitWorkspaceFullscreen, toggleWorkspaceFullscreen],
+  )
+  useEffect(() => {
+    if (!isChat || isMobile || !workspacePanelOpen || workspaceSearchOpen) setWorkspaceFullscreen(false)
+  }, [isChat, isMobile, workspacePanelOpen, workspaceSearchOpen])
 
   // Render one standard nav row (used by the top-fixed mains, the Apps list,
   // and the bottom-fixed section). Active-state, mobile close, chat pin
@@ -1690,6 +1705,7 @@ export default function App() {
     <div
       ref={shellRef}
       data-testid="dashboard-shell"
+      data-workspace-fullscreen={panelFullscreen || undefined}
       className={`relative z-[1] h-full grid ${shellEntered ? '' : 'animate-rise'} overflow-hidden bg-bg p-safe ${isMacElectron ? `mac-electron ${macFullscreen ? 'mac-fullscreen' : ''}` : ''} ${isWinElectron ? 'win-electron' : ''} ${isLinuxFramelessElectron ? 'linux-electron' : ''} ${isMobile ? 'grid-cols-[minmax(0,1fr)] grid-rows-[42px_minmax(0,1fr)]' : bottomDock ? 'grid-rows-[42px_minmax(0,1fr)_auto]' : 'grid-rows-[42px_minmax(0,1fr)]'}`}
       // Retire the entrance animation once it has played, so re-showing this
       // pane cannot replay it. Guarded on BOTH the keyframe name and the event
@@ -1742,7 +1758,16 @@ export default function App() {
           Activity panel here on desktop so it spans the window top-to-bottom
           instead of sitting below the header row. Empty (0 width) when the
           panel is closed or on non-chat routes. */}
-      {!isMobile && <div id="activity-bar-slot" className="h-full min-h-0 min-w-0" style={{ gridArea: 'actbar' }} />}
+      {!isMobile && (
+        <motion.div
+          id="activity-bar-slot"
+          layout
+          layoutDependency={panelFullscreen}
+          transition={{ layout: { duration: reduceWorkspaceMotion ? 0 : 0.18 } }}
+          className="h-full min-h-0 min-w-0"
+          style={{ gridArea: 'actbar' }}
+        />
+      )}
 
       {/* Skip to content — visible only on focus for keyboard users */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-accent focus:text-accent-fg focus:text-sm focus:font-medium">{i18nT('app.skip_to_content')}</a>
@@ -2531,8 +2556,10 @@ export default function App() {
                   onClick={closeMobileNav}
                   /* While popped out: focus only (a refused programmatic
                      focus is a harmless no-op). Explicit re-dock lives in the
-                     TerminalDetachedBar below -- never a timing heuristic. */
-                  onClickOverride={() => { if (terminalPoppedOut) focusTerminalPopout(); else toggleBottomTerminal(activeSlotProject) }}
+                     TerminalDetachedBar below -- never a timing heuristic.
+                     Workspace fullscreen exits first, as the terminal chord
+                     does, so the docked panel is not opened behind it. */
+                  onClickOverride={() => { exitWorkspaceFullscreen(); if (terminalPoppedOut) focusTerminalPopout(); else toggleBottomTerminal(activeSlotProject) }}
                 />
               )}
               {hasRenderableMobileConnect && (
@@ -2697,6 +2724,8 @@ export default function App() {
           {/* The rail renderer reaches the chat page through context rather than
               a prop: the route element is shared with the popout/embed frames. */}
           <MobileNavRailContext.Provider value={mobileNavRail}>
+          <WorkspacePanelContext.Provider value={setWorkspaceSearchOpen}>
+          <WorkspaceFullscreenContext.Provider value={isChat && !isMobile ? workspaceFullscreenControls : null}>
           <Routes>
             <Route path="/chat/:slug?" element={<ErrorBoundary><ChatPage /></ErrorBoundary>} />
             <Route path="/orchestrated/:slug?" element={<OrchestratedRedirect />} />
@@ -2758,6 +2787,8 @@ export default function App() {
             <Route path="/:builtinApp/*" element={<BuiltinAppRoute />} />
             <Route path="*" element={<ChatRedirect />} />
           </Routes>
+          </WorkspaceFullscreenContext.Provider>
+          </WorkspacePanelContext.Provider>
           </MobileNavRailContext.Provider>
         </main>
         {/* App-wide docked terminal panel — renders beside <main> (right) or

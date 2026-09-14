@@ -257,6 +257,20 @@ describe('focus mode — shell layout', () => {
     expect(linuxReserve, 'linux-electron focus-mode caption reserve').not.toBeNull()
     expect(linuxReserve![1]).toBe(header('linux')![1])
 
+    // Workspace fullscreen reaches the same corner only in focus mode; outside
+    // it the strip sits under the docked header, which already clears it.
+    const winStrip = css.match(
+      /body\.mc-focus-mode \[data-workspace-fullscreen\]\.win-electron \.side-panel-strip \{ padding-right: var\(--mc-win-caption-reserve\); \}/,
+    )
+    expect(winStrip, 'win-electron fullscreen strip uses the shared reserve var').not.toBeNull()
+    const linuxStrip = css.match(
+      /body\.mc-focus-mode \[data-workspace-fullscreen\]\.linux-electron \.side-panel-strip \{ padding-right: (\d+)px; \}/,
+    )
+    expect(linuxStrip, 'linux-electron fullscreen strip reserve').not.toBeNull()
+    expect(linuxStrip![1]).toBe(header('linux')![1])
+    expect(css).not.toMatch(/^\[data-workspace-fullscreen\]\.\w+-electron[^{]*\.side-panel-strip/m)
+    expect(css).not.toMatch(/\.mac-electron[^{]*\.side-panel-strip/)
+
     // Deliberately NO platform-agnostic rule. It would out-specify the strip's
     // Tailwind px-2 (0,2,1 vs 0,1,0) and zero the gutter on macOS and in the
     // browser, where nothing is painted over that corner to begin with.

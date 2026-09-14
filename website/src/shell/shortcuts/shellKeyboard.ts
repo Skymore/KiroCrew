@@ -29,7 +29,7 @@ const APPROVAL_MODE_LEVELS = ['normal', 'trust_reads', 'trust', 'yolo']
  * on the active session (and the notice a failed switch leaves), the panel
  * toggles, and the instance-pane and auto-connect hooks registered once here.
  */
-export function useShellKeyboard({ toggleFocusMode, toggleNav, terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject }: {
+export function useShellKeyboard({ toggleFocusMode, toggleNav, terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject, exitWorkspaceFullscreen }: {
   toggleFocusMode: () => void
   toggleNav: () => void
   terminalEnabled: boolean
@@ -37,6 +37,8 @@ export function useShellKeyboard({ toggleFocusMode, toggleNav, terminalEnabled, 
   isEmbed: boolean
   terminalPoppedOut: boolean
   activeSlotProject: string | undefined
+  /** Leaves workspace fullscreen so the docked terminal is not opened behind it. */
+  exitWorkspaceFullscreen: () => void
 }) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
@@ -257,7 +259,7 @@ export function useShellKeyboard({ toggleFocusMode, toggleNav, terminalEnabled, 
     // close the terminal in the MAIN window, out of sight of the person pressing
     // the key.
     onToggleTerminal: terminalEnabled && !isPopout && !isEmbed
-      ? () => { if (terminalPoppedOut) focusTerminalPopout(); else toggleTerminalByChord(activeSlotProject) }
+      ? () => { exitWorkspaceFullscreen(); if (terminalPoppedOut) focusTerminalPopout(); else toggleTerminalByChord(activeSlotProject) }
       : undefined,
     // VS Code's Create New Terminal: open the docked panel if needed and add a
     // tab in the active session's project. Same gating as the toggle above, and
