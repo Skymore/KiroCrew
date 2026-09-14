@@ -238,7 +238,16 @@ describe('focus mode — shell layout', () => {
       // Same band the DOCKED header clears: this reserve exists only because
       // focus mode takes that header out of flow, so the two must not drift.
       expect(rule![1]).toBe(header(platform)![1])
+      // Workspace fullscreen reaches the same corner only in focus mode; outside
+      // it the strip sits under the docked header, which already clears it.
+      const fullscreenStrip = css.match(new RegExp(
+        `body\\.mc-focus-mode \\[data-workspace-fullscreen\\]\\.${platform}-electron \\.side-panel-strip \\{ padding-right: (\\d+)px; \\}`,
+      ))
+      expect(fullscreenStrip, `${platform}-electron fullscreen strip reserve`).not.toBeNull()
+      expect(fullscreenStrip![1]).toBe(header(platform)![1])
     }
+    expect(css).not.toMatch(/^\[data-workspace-fullscreen\]\.\w+-electron[^{]*\.side-panel-strip/m)
+    expect(css).not.toMatch(/\.mac-electron[^{]*\.side-panel-strip/)
 
     // Deliberately NO platform-agnostic rule. It would out-specify the strip's
     // Tailwind px-2 (0,2,1 vs 0,1,0) and zero the gutter on macOS and in the
