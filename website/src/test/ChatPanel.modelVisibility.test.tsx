@@ -202,7 +202,7 @@ describe('Settings selectable models', () => {
     await waitFor(() => expect(trigger).toHaveTextContent('All models (3)'))
     fireEvent.click(trigger)
 
-    const auto = screen.getByRole('checkbox', { name: 'auto' })
+    const auto = screen.getByRole('checkbox', { name: 'Auto' })
     expect(auto).toBeChecked()
     expect(auto).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'model-a' })).toBeChecked()
@@ -228,7 +228,7 @@ describe('Settings selectable models', () => {
     const search = screen.getByRole('textbox', { name: 'Search models…' })
     search.focus()
     fireEvent.keyDown(search, { key: 'ArrowDown' })
-    const autoRow = screen.getByRole('checkbox', { name: 'auto' }).closest('label') as HTMLElement
+    const autoRow = screen.getByRole('checkbox', { name: 'Auto' }).closest('label') as HTMLElement
     expect(autoRow).toHaveFocus()
     fireEvent.keyDown(autoRow, { key: 'ArrowDown' })
     const modelARow = screen.getByRole('checkbox', { name: 'model-a' }).closest('label') as HTMLElement
@@ -268,7 +268,7 @@ describe('Settings selectable models', () => {
     })
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'model-a' })).toBeChecked())
     expect(screen.getByRole('checkbox', { name: 'model-b' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'auto' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Auto' })).toBeChecked()
   })
 
   it('deselects optional advertised models in one save and acknowledges only success', async () => {
@@ -295,8 +295,8 @@ describe('Settings selectable models', () => {
     })
     expect(await screen.findByText('Failed to save selectable models')).toBeInTheDocument()
     expect(configured()).toBe(false)
-    expect(screen.getByRole('checkbox', { name: 'auto' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'auto' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Auto' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Auto' })).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Deselect all' }))
     await waitFor(() => expect(updateDashboardConfigMock).toHaveBeenCalledTimes(2))
