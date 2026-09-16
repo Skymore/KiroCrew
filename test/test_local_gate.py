@@ -310,6 +310,15 @@ def test_empty_diff_runs_nothing(gate, monkeypatch) -> None:
     assert "CI" in plan.reason
 
 
+def test_empty_diff_dry_run_defers_full_suite_to_ci(gate, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(gate, "changed_files", lambda base: [])
+    rc = gate.main(["--dry-run"])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "(full)" not in err
+    assert "deferred to CI" in err
+
+
 def test_meta_diff_does_not_run_full(gate, monkeypatch) -> None:
     """A scripts/ (meta) change gets its related set, not the full gate."""
     monkeypatch.setattr(gate, "changed_files", lambda base: ["scripts/clean.sh"])
@@ -330,7 +339,7 @@ def test_evidence_only_diff_runs_nothing(gate, monkeypatch) -> None:
     )
     plan = gate.build_plan(_args())
     assert plan.commands == []
-    assert "CI" in plan.reason
+    assert "deferred to CI" in plan.reason
 
 
 def test_both_surfaces_does_not_run_full(gate, monkeypatch) -> None:
@@ -622,10 +631,19 @@ def test_dry_run_full_exits_zero_and_prints_plan(gate, capsys) -> None:
 
 
 def test_dry_run_against_the_real_repo_never_plans_a_full_suite(gate, capsys) -> None:
-    """Whatever this checkout's diff looks like, the default plan is related-only."""
+    """Whatever this checkout's diff looks like, the default plan is related-only.
+
+    The diff is the developer's, not the test's: a clean checkout has no changes
+    against the merge-base and the gate says so instead of selecting anything, a
+    dirty one gets a related-only plan. Both are the invariant holding, so the
+    assertion accepts either wording; only a ``(full)`` surface label -- the
+    ``--full`` plan's own marker -- would break it.
+    """
     rc = gate.main(["--dry-run"])
     err = capsys.readouterr().err
     assert rc in (0, 2), err
     assert "(full)" not in err
     if rc == 0:
-        assert "deferred to CI" in err
+        # Every rc==0 plan names CI as the full suite's owner, in one of two
+        # spellings depending on whether there was anything related to select.
+        assert "full suite deferred to CI" in err or "the full suite runs in CI" in err, err

@@ -415,6 +415,23 @@ which testpath asked for the workers.
      never move the anchor.** Redirecting a matcher so a test can pass makes it assert
      against a pattern that no longer matches the thing it protects.
 
+- **Tests MUST NOT derive an expected value from the repo's declared version.**
+  `kiro_crew.__version__` is an input the checkout controls, not a constant: a release
+  branch declares `X.Y.Z-rc.N` by contract ([release](../../build/release.md)), a
+  nightly tree carries `.dev<stamp>`, an insider wheel its own suffix. `main` declares
+  a bare release, so an expectation COMPUTED from it is green there and red exactly
+  where a release is decided: `f"{__version__}.12"` for a `BUILD_VERSION` stamp
+  production honours only over a bare numeric base passed on `main` for months while
+  reddening `release.yml`'s `release-candidate-tests` — the same-SHA gate every
+  prerelease tag must clear before a promotion record can be assembled — and every
+  local run and back-to-`main` PR off that branch with it. Pin a synthetic base
+  instead, and when the test synthesizes the package under test, rewrite the literal
+  there so the test owns that input outright (`test/test_build_version_override.py`'s
+  `_PINNED_BASE`). Comparing the SAME live value on both sides is fine and is not this
+  rule — "`--version` reports the string the package declares" IS the contract; it is
+  computing a DIFFERENT string from the live one that assumes a shape no branch
+  guarantees.
+
 - **Never leave the process working directory somewhere else.** The CWD is
   per-PROCESS, so under xdist one test's `os.chdir` becomes every later test's starting
   directory on that worker. Use `monkeypatch.chdir`, which reverts on its own; the
@@ -820,6 +837,23 @@ Two things the survey CANNOT tell you, both of which misled the first pass:
   held for the life of the worker is paid by every later test on it. And mark the module
   as one `xdist_group` (see "Keeping the suite fast"): a per-module cache that xdist
   spreads over five workers is warmed five times.
+- **A repo-WIDE corpus scan enumerates via git, never the filesystem.** `rglob` and
+  `os.walk` from the repo root descend every gitignored tree and every checkout nested
+  under it, so a worktree under `.claude/worktrees/` (the Claude Code harness creates
+  them there), a local `.kirocrew-dev/` data home or a scratch clone puts a second copy
+  of every shipped file in front of the gate. That is not only a false positive naming a
+  path the author cannot edit: where the gate asserts `any(...)` over its matches — the
+  coverage omit contract does — a stale copy keeps satisfying it after the real file lost
+  the property, and the gate fails OPEN. Use `source_corpus.repo_files()` /
+  `repo_files_named(...)`, which asks `git ls-files --cached --others --exclude-standard`
+  (untracked-but-not-ignored included, so a new file is policed before it is `git add`ed)
+  and keep the gate's own scope filter — `_vendor` is TRACKED, so git names it just as a
+  walk would. Its no-git fallback is reachable ONLY where there is no `.git` (an sdist) or
+  no git binary: a checkout whose `git` call merely FAILED — a leaked `GIT_DIR`,
+  `safe.directory` — raises instead, because a fallback there answers wider than git and
+  no count floor catches a surplus. Skipping one directory by name is not the fix: the set
+  of nested trees is open, and `test_source_corpus.py` pins the rule instead — no test
+  under `test/` or `scripts/` may root a recursive filesystem scan at the repo root.
 
 The second full-run audit (five backend + five frontend runs against a clean `main`)
 found these further classes. Each one passed on the host that wrote it.
@@ -1266,6 +1300,281 @@ about the code. Each is a hermeticity gap, and each has one fix:
   succeeds but encode fails" for a 2,000-deep JSON body met an interpreter that did both;
   assert the invariant across all three outcomes, and walk a deep structure iteratively
   in the assertion itself.
+
+### What a fifth five-run pass found (macOS, uv venv, ~106k tests per run)
+
+The measurement was repeated on a macOS host whose virtualenv was created by `uv` (so
+it carries **no `pip` module**) and whose base interpreter is a relocatable
+python-build-standalone build, from inside an agent session, with the audit hook and the
+per-test census above plus a warnings census. Five backend runs of 105,536 tests each:
+ten deterministic failures on every run, one flake in five, zero timeouts, zero worker
+crashes; five vitest runs (33,722) and four Electron runs (1,901) with no failure at all
+— the one red Electron run had no `website/electron/node_modules`, which `npm ci` in
+`website/` does not install (`npm ci --ignore-scripts` in `website/electron/` does).
+The suite was also emitting ~9,250 warnings per run, and mining them turned up four
+classes the residue and failure signals never would have.
+
+The ten failures were the venv, not the code:
+
+- **A fixture venv built with `venv.create()` copies the binary, and a copied
+  python-build-standalone binary does not start.** The API's default is
+  `symlinks=False`; the copied `.venv/bin/python3` then resolves
+  `@rpath/libpython3.12.dylib` relative to its own location and aborts under dyld. The
+  interpreter resolver's usability probe fails closed and production falls back to
+  `sys.executable`, so `resolve_app_python` and `venv_provided_command` both "prefer" the
+  running interpreter. `python -m venv` — where real venvs come from — uses symlinks on
+  POSIX. Build fixture venvs with `symlinks=not IS_WINDOWS`
+  (`test_apps_backend_coverage._create_real_venv`).
+- **A probe of the RUNNING interpreter's packaging.** `_run_app_build` decides whether
+  to plan a `pip install` with `importlib.util.find_spec("pip")`, which is `None` in a uv
+  venv, so every build-planning test captured an empty command list. Already a documented
+  class (§ Coverage that only looks like coverage); it now has a fixture: pin the probe
+  truthy with a `ModuleSpec("pip", loader=None)` for the planning branch and falsy for
+  the skip branch, never leave it to the host.
+- **A fake `subprocess.run` that routes by SUBSTRING of the joined argv is
+  host-dependent.** The Linux service test's responder matched `"restart" in " ".join(argv)`;
+  the unit-file write's argv carries a `mkstemp` path under `TMPDIR`, and in
+  `KIROCREW_TMP_PER_TEST` mode that directory is named after the test's own nodeid —
+  which contains "restart". The fake returned the restart failure at the write step and
+  the branch under test was never reached (the `..._at_enable` sibling had the same
+  exposure). Route on whole tokens, `needle in argv_list`; a path element can contain any
+  word.
+- **A test that drives a tool against the REAL checkout asserts one branch's wording.**
+  `test_dry_run_against_the_real_repo_never_plans_a_full_suite` required "deferred to
+  CI", which `local-gate.py` prints only for a dirty checkout; a clean one takes the
+  no-diff branch. The invariant is "never `(full)`" and holds on both; assert that, and
+  accept either branch's wording.
+
+The one flake was two defects a shared directory connected:
+
+- **A `0o555` directory under `tmp_path` with no finalizer, and a nested pytest on the
+  default basetemp.** `test_removing_owner_write_still_diverges` chmods a directory of
+  the installed copy and never restores it, so pytest's `rm_rf` cannot delete that
+  `tmp_path` and renames it into the shared `/tmp/pytest-of-<user>/garbage-<uuid>/`.
+  `test_xdist_escaped_failure_guard` spawns a nested pytest that used the DEFAULT
+  basetemp — the same shared tree — whose startup prune tripped over that garbage and
+  printed `(rm_rf) error removing ...`; the guard's `assert "error" not in out` failed,
+  once in five runs, on a test in another file. Both halves are fixed: every fixture
+  that chmods under `tmp_path` restores owner rwx top-down in a finalizer
+  (`_restore_owner_rwx`), and a nested pytest ALWAYS gets `--basetemp` under the outer
+  test's `tmp_path` so its output describes only its own run. Isolation is the fix; the
+  assertion was not weakened.
+
+Host writes and leaks the earlier passes did not have the hooks to see:
+
+- **A platform default that is not HOME-derived cannot be relocated by faking HOME.**
+  `workspace_root()` on macOS defaults to `/Volumes/workplace` — the operator's real
+  workspace — and `_resolve_workspace_root()` mkdirs it. `delenv("KIROCREW_WORKSPACE")`
+  to test the default therefore created the operator's directory on every run
+  (invisible because it already existed). Patch the resolver's default in the namespace
+  the caller reads (`loader._default_workspace_base`) and assert the result lands under
+  `tmp_path`.
+- **A module-scoped fixture holding a `MonkeyPatch` over env leaks across the FIRST
+  test that requests it and the LAST test the module runs on each worker**, so the
+  attributed test differs per run. `test_otlp_wire_e2e`'s `exported` fixture held
+  `KIROCREW_HOME` and `KIROCREW_TELEMETRY` for the module's lifetime although nothing
+  downstream read them. When the shared value is fully built by the fixture body, scope
+  the patches to the build with `pytest.MonkeyPatch.context()` and return the value.
+- **A session-scoped autouse fixture that writes `os.environ` directly leaks for the
+  life of the worker.** The auto_improvement app conftest set `GIT_AUTHOR_*` /
+  `GIT_COMMITTER_*` with `os.environ.setdefault` so its `git commit` subprocesses had an
+  identity; every later suite on that worker inherited them. A session-lifetime
+  `pytest.MonkeyPatch.context()` is not the fix either: it undoes the keys at session
+  end, but every later suite on the worker still runs with them set. An env value a
+  subprocess must see is set per test through the function-scoped `monkeypatch`
+  (`monkeypatch.setenv`, only when the key is absent), so it is undone with the test.
+- **A trusted-directory resolver that finds a real per-user tool turns a unit test
+  into a host-toolchain test.** `test_md_notebook` reached `_find_gh` → the host's `gh`
+  ~154 times per run (`gh auth token`: install- and login-dependent, and it hands the
+  code under test a LIVE token); `test_acp_client` reached `mise` through
+  `_resolve_claude_code_executable`. Pin the resolver at the seam production reads (its
+  env override `MD_NOTEBOOK_GH_BIN`, or the resolving function), never the spawn.
+- **A "packet-less" UDP `connect` is still an off-loopback network touch.** The first
+  `is_denied("ssh ...")` on a worker ran the own-interface probe, which connects a
+  datagram socket to a TEST-NET address to read the local interface; the routing table
+  answers it, and it also starts the DNS worker thread. Stub it with a `socket.socket`
+  subclass whose datagram `connect` is inert and whose `getsockname` reports loopback,
+  scoped to the tests that seed the verdict cache, so the real enumeration still runs in
+  its own test.
+- **Stubbing a runner that owns deferred cleanup also stubs away the cleanup.**
+  `worktree_ops` registers its `mkdtemp` snapshot and runner directories in
+  `cleanup_paths` and hands them to `_start_run`, whose `finally` removes them; eight
+  `test_dev_fleet_app` tests replaced `_start_run` with a bare `AsyncMock` and 15
+  `kirocrew-sync-runner-*` / `kirocrew-npm-preflight-*` directories outlived every run.
+  Production was correct. A stub for a runner that owns cleanup reaps `cleanup_paths`
+  itself (`_start_run_stub`).
+- **A file the code guards with a sidecar must live under `tmp_path`.** Config tests
+  wrote through `NamedTemporaryFile(delete=False)` in the temp root and unlinked only the
+  JSON; the loader's `<config>.lock` sidecar outlived the test. Seed the file at
+  `tmp_path / "config.json"` and the sidecar dies with the directory.
+- **A spawned external binary writes its own logs and telemetry into the inherited
+  `TMPDIR`.** The real `kiro-cli` left `kiro-log/` and `toolbox-telemetry-emf*` per run.
+  Pass `TMPDIR`/`TMP`/`TEMP` pointing inside the test's own temp tree in the child's
+  `env`, the way the child's `cwd` already is.
+- **A subsystem whose only close is process exit leaks one handle per start on the
+  worker.** `start_dashboard` opens the loop-stall crash-dump descriptor through a
+  wrapper whose `close()` is a deliberate no-op, and the knowledge store's SQLite
+  connections are per-thread with no enumeration; every dashboard-starting test added a
+  constant +8 descriptors. The harness teardown (`_release_process_handles`) now stops
+  the watchdog, `os.close`s the dump fd and closes the store's calling-thread connection
+  after `runner.cleanup()`; a worker-thread body that opens a thread-local connection
+  closes it before returning. The same tests were ALSO wrapping an app `start_dashboard`
+  had already set up in a second `TestServer`, which re-ran every `on_startup` hook on the
+  frozen app and orphaned a second `ClientSession` and knowledge watcher — serve
+  `runner.server` through a `ServerRunner` instead.
+- **A rising thread count is a leak only when the new threads are not a named bounded
+  pool.** Every repeatable thread delta this pass measured (`+15` on the multistore
+  stress test, `+3` on the terminal probe cap, `+3` on headless memory) was
+  `mc-embed_*`, `mc-recall_*`, `mc-discovery_*`, `mc-pathres_*`, `mc-maint_*` or
+  `sel-writer` warming for the first time on that worker — the same delta on every run
+  because every run is a fresh process warming in the same order. Print thread NAMES in
+  the probe before treating a count as a leak.
+- **The per-test residue bisector applied the allow-list to the wrong level.** In
+  `KIROCREW_TMP_PER_TEST` mode the by-design entries (`kirocrew-computer-shots`, a nested
+  basetemp) sit INSIDE the per-test base, and the filter matched only the base's name, so
+  144 spool "leaks" per run were attributed to whichever computer-use test reached the
+  feature. The filter applies to the leaf as well now.
+
+What the warnings census found, none of it visible as a failure or a residue:
+
+- **Writing to a frozen aiohttp app: 160 per run.** `client.app["state"] = ...` after
+  `start_server()`, a production `on_startup` object overwritten after start, and a
+  request-time `request.app.setdefault("_bg_tasks", set())` in production — all
+  "Changing state of started or joined application is deprecated", which a later aiohttp
+  raises. Configure all app state before the client starts; to override something a
+  production hook creates, append your own `on_startup` hook AFTER the registration call
+  (hooks run in order) that tears the real object down and installs the fake; and seed
+  every registry the handlers reach at route registration, while the app is still
+  mutable (`setup_knowledge_routes`, `auto_research.register_routes` now do).
+- **Fifty synchronous tests carrying `@pytest.mark.asyncio`**, forty-four of them from a
+  module-level `pytestmark` in nine files. Each emits a `PytestWarning` today and, the
+  day it gains an await-shaped call, asserts nothing. Per-test marks on the async tests
+  (a class-level mark only where every test in the class is async); never make a sync
+  test async to satisfy the mark.
+- **A bare `AsyncMock()` standing in for a provider makes EVERY attribute an
+  awaitable: 224 `coroutine ... was never awaited` per run.** `_run_chat` and the run
+  loop call synchronous accessors on the provider — `context_window_tokens()`,
+  `mcp_session_report()`, `available_models()`, the inner client's
+  `pop_pending_oauth_requests()` — and each call handed back a coroutine nobody awaited,
+  reported at garbage collection against a LATER test in a file that never built the
+  mock. Build the double from one factory that pins each sync accessor as `MagicMock`
+  or a `lambda`; and a mock that replaces a spawner or `asyncio.wait_for` must
+  `close()` the coroutine it is handed, or the real turn it swallowed is the warning.
+  Locate the culprit with a `-p` plugin wrapping `AsyncMockMixin._execute_mock_call`,
+  not with the file the warning is attributed to.
+- **A `threading.Thread(target=lambda: ...)` whose target is stubbed to raise turns
+  the test's own signal into a swallowed `PytestUnhandledThreadExceptionWarning`.** Two
+  dogfood tests stubbed `build_profile` to raise `ValueError("stop")` to halt startup
+  after the checkout, then never observed it. Capture the outcome in the thread body and
+  assert it is exactly the planted exception; a thread exception is never silent.
+
+And two the census of duration and RSS added:
+
+- **A tree ratchet that RETAINS parsed trees to share them between scanners.**
+  `test_platform_cpp_seam_coverage`'s module fixture kept every core module's AST in a
+  list for the module's life: +481 MiB on the worker's high-water mark (1,227 MiB under
+  `-n0`), the largest single step in the suite, plus slower GC for every later test.
+  Stream: yield each tree, extract everything every consumer needs in ONE walk into
+  small result maps, drop the tree, cache the results — +0 MiB, and 13.5 s → 2.9 s CPU.
+  Two more ratchets (`test_cron_store_unreadable_boundaries`,
+  `test_compaction_wait_budget`) re-parsed the tree per TEST with no `xdist_group`; they
+  now use `source_corpus.candidate_sources` and carry their own group.
+- **A linearity ratchet on a wall-clock ratio flips under load, and a call-event
+  count cannot replace it.** `test_the_eval_join_stays_linear` compared timings at
+  2,000 and 16,000 tokens; the small sample is milliseconds, so one preemption during
+  the large one breached a ratio a regression would also breach — it had been widened
+  once already and still flipped under twelve concurrent agents. Interpreter call
+  counts read a quadratic `str.join` as linear (one C call whatever its length). The
+  join's work IS the length of the string it builds, so the test now compares total
+  payload characters: exactly 8.0x for the linear walk, 64x for the unbounded-join
+  mutant, on every host. Measure the work the algorithm does, in units the algorithm
+  defines.
+
+### What a sixth five-run pass found (Windows host, ten workers, ~98k tests per run)
+
+Repeated on `main` one day after the macOS pass above, on the Windows developer machine
+of the second pass, with the same per-test probe plus a before/after snapshot of the TEMP
+root and the operator's home. Four of the eight classes it found had landed upstream from
+the macOS pass while this one was being written (the retained ASTs, the `workspace_root()`
+default, the `GIT_*` session fixture and the two `delenv`-before-write env leaks — each
+reproduced here independently, with the same fix); the four below were new. One test
+flipped across the five runs, and the always-red set (173 tests, every one from
+`workflow_memory` refusing files whose owner is the built-in `Administrators` group) was
+the host, not the suite — see the section above.
+
+- **A singleton built at COLLECTION outlives the tmp dir it was bound to.**
+  `test_app_backend.py`'s `_sandbox_can_spawn()` probe runs `wrap_argv()` under an
+  empty `KIROCREW_HOME` inside a `TemporaryDirectory`. On a host with no sandbox
+  backend the call fail-closes and records a `denied` audit through `sel()` — the
+  process singleton, which binds `_dir` once from whatever `_default_dir()` says at
+  that moment: the throwaway home. The `_isolate_sel_default_dir` session floor resets
+  the singleton at the FIRST TEST's setup, which is after collection, so the probe's
+  instance stays live through the whole collection phase and any write on it
+  `mkdir`s the deleted home back: one bare `tmp*` directory at the TEMP root per
+  worker, holding `security_events.jsonl` and a `trust/` HMAC key, on every run.
+  Fix, local: the probe OWNS the singleton — `_own_probe_sel` constructs it
+  `sync=True` under the temp home BEFORE `wrap_argv()`, so the denial is written
+  inline and no writer thread ever exists, and `_retire_probe_sel` clears the class
+  slots before the directory goes. The first shape retired an async instance after
+  the fact (flush, shutdown sentinel, `join(timeout=5)`); review pointed out that a
+  join which times out leaves a daemon thread whose next `_flush_batch` re-creates the
+  deleted home — the very leak, one race away. Prefer never starting the thread over
+  stopping it. The shape to grep for is a module-level probe that can reach a process
+  singleton (`sel()`, a config loader, a metrics exporter) — the floor cannot see it
+  because no fixture has run yet, and a `with TemporaryDirectory()` around it proves
+  nothing when the object it created holds the path.
+- **`int(MagicMock())` is 1, and a drain loop reads it as "one still pending".**
+  `_drain_update_callback_work` polls `int(sessions.inbound_callback_count)` until it
+  reaches zero or its 30 s deadline. The shared `_mock_sessions()` never set that
+  attribute, so the mock answered 1 forever, and twelve auto-apply-update tests each
+  sat out the full 30 s — six minutes per run, in a file whose other 300 tests take
+  fifteen seconds — then took the "restart deferred" branch instead of the restart
+  they were named for, and still passed. The tell is a test whose duration is EXACTLY
+  a production timeout. A `MagicMock` attribute the code under test converts (`int()`,
+  `float()`, `len()`, `bool()`) or compares must be set explicitly in the helper that
+  builds the mock; the fix here was one line, `s.inbound_callback_count = 0`.
+- **A ReDoS regression in these grammars is EXPONENTIAL, so the guard's input size
+  decides whether it fails or hangs.** `test_options_marker_closers`'
+  `elapsed < 1.0` wall-clock bound on a 200 000-tab pump flipped once in five runs —
+  0.15 s of CPU, descheduled behind nine sibling workers (class 5). Measured against a
+  mutated closer class that shares `\t` with the trailing `[ \t]*`: 0.27 s at 20
+  characters, 4.3 s at 24, doubling per character. Under that regression the
+  200 000-character input never returns and the worker is killed at `--timeout` — a
+  lost run (class 6), not a red test; the same shape sat in three sibling tests, and
+  a fifth guard (`test_options_marker_label_closers`' opener-run ratio) failed in the
+  change-related gate for a reason of its own: it DIVIDED two `time.monotonic()`
+  readings, and on Windows that clock ticks every 15.6 ms, so a 20 000-opener scan
+  that read 0.0 (floored to 1 ms) against one that landed on a single tick (16 ms)
+  produced a 16x "ratio" with the property intact — a mutant whose interior admits
+  the lookalike openers is exponential as well (3.2 s at 24), and one whose interior
+  admits EVERY bracket grows ~8x per pumped block (3.8 s at 8), so no single "small"
+  size is safe against every regression class.
+  `conftest.assert_rejected_without_backtracking` replaces every wall-clock guard
+  on the marker grammar — sixteen across nine test files, found by grepping for
+  the PUMP shape (`"[OPTIONS:" ... * <n>`) rather than for any one assertion
+  message, since two rounds of review each turned up siblings a message grep had
+  missed: thread CPU, a one-unit RAMP from 1 to 24 whose first over-budget size
+  fails the assertion — so the cost of catching a regression is bounded by one
+  growth step times the budget, measured 6 s against both mutants — then ascending
+  long pumps (200, 2 000, 20 000) for the polynomial class, taking a second reading
+  only when the first overran (a GC pause cannot hit two in a row). The property
+  itself is also asserted structurally where it can be: no
+  closer, opener or wrapper character `isspace()` or is a label separator.
+- **A refused "system directory" is platform-shaped, and the refusal path CREATES
+  what it does not refuse.** `KIROCREW_HOME=/usr` resolves to `C:\usr` on Windows,
+  which `_is_unsafe_home` (correctly) does not know, so `config_dir()` accepted the
+  override and made the directory on the system drive every run; the test was a
+  strict xfail there for the wrong reason. The test now names the location the guard
+  refuses on the host it runs on (the drive root on Windows) and the xfail line is
+  gone. A fixture value that spells a POSIX absolute path is a Windows relative one
+  (`host_abs`, above), and a resolver test must check what its rejected input
+  resolves TO before assuming rejection.
+
+Two things this pass did NOT find are worth recording so the next one does not
+re-derive them. A per-worker `test-floor-*` directory at the TEMP root was residue from
+runs KILLED mid-session on the same host (zero of fifty-five floors leaked from a run that
+finished), and the computer-use host catalog probing `Program Files` at import is the
+product's own capability probe, transient and by design.
 
 ## Running the suite: the defaults, and how to narrow safely
 
@@ -1779,6 +2088,18 @@ assert traced(build(4000)) == traced(build(2000))
 
 Keep a *small*-`n` absolute assertion alongside it so a uniform slowdown is still caught, and
 verify the threshold against a mutated implementation rather than reasoning about it.
+
+For a regex — no instrumentation surface at all — use `test/conftest.py`'s
+`assert_rejected_without_backtracking(reject, build_pump)`, and note what the mutation
+showed: a shared character between two adjacent quantified classes in the marker grammars
+is not polynomial but EXPONENTIAL (doubling per pumped character; 4.3 s at 24), so the
+200 000-character pump the old guards used would never return under a regression and the
+worker would die at `--timeout` (class 6) — and no single "small" size is safe either: a
+harsher mutant grew ~8x per pumped block. The helper therefore RAMPS the pump one unit
+at a time from 1 to 24, on thread CPU, failing at the first size that overruns its
+budget (so catching any regression costs about one growth step), and only then tries
+ascending long pumps for the polynomial class. Size any complexity guard so the
+regression it exists to catch FAILS it, not hangs it.
 
 **First check that the time is even the algorithm's.** `test_chained_cd_expansions` asserted
 `elapsed < 30s` around the bash gate and took 144s under load — but with the gate's

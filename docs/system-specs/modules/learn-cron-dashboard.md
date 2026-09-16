@@ -261,6 +261,8 @@ state the alert exists to prevent.
 
 Each job stores an optional `timezone` field (IANA name, e.g. `America/Los_Angeles`). Schedule evaluation, next-run computation, and display all use the job's timezone rather than the server timezone. The `/api/crons` response includes both the per-job `timezone` and a top-level `server_tz` field so frontends can render correctly.
 
+The shared schedule formatter receives the saved job timezone at every display boundary, including `cron_add` and `cron_update` confirmations, `cron_list`, `kirocrew cron list` and `kirocrew cron add`, the Schedule page, and channel command listings. A job without its own timezone retains the published server-timezone fallback.
+
 ### Skip Dates
 
 Jobs can define `skip_dates` — a list of dates (YYYY-MM-DD) on which the job should not fire. The executor already skipped these at runtime; `compute_next_run_ts` now also advances past skip_dates when computing the display/preview "next run" time. The advance is bounded by a **wall-clock horizon** (~2 years, `_MAX_SKIP_DATE_HORIZON_SECS`) rather than a fixed iteration count, so the bound does not couple to schedule granularity — a daily and a `*/5` cron both simply look ~2 years ahead for the next non-skipped fire (an earlier fixed iteration cap sized for one granularity silently returned `None` — the job never firing again — for finer-grained schedules with long skip ranges). A large absolute iteration ceiling (`_MAX_SKIP_DATE_LOOKAHEAD`) remains only as an anti-infinite-loop safety net for a pathological all-skipped sub-minute config. The `/api/crons` response includes `skip_dates` per job.
@@ -1584,19 +1586,32 @@ pull-request URLs on public `github.com` (normalizing `www.github.com`); arbitra
 hosts, enterprise instances, repository URLs, path suffixes, query/fragment identity,
 and non-positive pull-request numbers are refused before provider execution. The
 adapter resolves and invokes the shared hardened `github_runner` boundary with
-`GH_HOST` pinned to `github.com`. It reads lifecycle, review, and mergeability fields
-first. For an open pull request it reads `statusCheckRollup` in a separate request
-paired with `headRefOid`, then walks GraphQL review threads in pages of 100, stopping
-after at most ten pages. A missing Checks permission therefore cannot erase readable
-primary facts, and a rollup for a different head is incomplete instead of being
+`GH_HOST` pinned to `github.com`. Every read is a GraphQL document carrying one alias
+per subject, so the subjects of one call share the request and a tick
+of at most 25 subjects costs three of them, each further chunk of 25 adding three;
+owner, repository, number, and
+cursor are bound as typed variables, never interpolated into the document. It reads
+lifecycle, review, and mergeability fields first.
+For an open pull request it reads `statusCheckRollup` in a separate request
+paired with `headRefOid`, in pages of 100 up to four pages, then walks GraphQL review
+threads in pages of 100, stopping
+after at most ten pages, each subject advancing on its own cursor. A missing Checks
+permission therefore cannot erase readable
+primary facts, and a rollup for a different head — whether the head field or the
+rollup's own commit is the one that differs — is incomplete instead of being
 combined with the primary response. A null rollup is a complete empty check set.
 Merged and closed primary lifecycle states are terminal without either supplemental
-request. An incomplete, malformed-node, repeated/missing-cursor, or capped thread
+request, and such a subject is left out of the supplemental documents entirely.
+An incomplete, malformed-node, repeated/missing-cursor, or capped thread
 traversal is a pending fact and can never produce review-ready success. Outdated
 unresolved threads are ignored because they no longer block the current diff.
 When GraphQL returns errors alongside usable thread nodes, the traversal remains
 incomplete but folds those nodes first, so an observed unresolved thread still wins
-as actionable evidence. If the supplemental review-thread request itself fails, the
+as actionable evidence. One unreadable subject degrades alone: `gh` exits non-zero
+whenever a response carries any error, including one scoped to a single alias, so the
+adapter reads the payload rather than the exit code and attributes each error to the
+subject its alias names; an error naming no alias in the batch is charged to every
+subject in it. If the supplemental review-thread request itself fails, the
 adapter retains primary lifecycle, check, review, and mergeability facts and unresolved
 threads observed on earlier pages while marking thread evidence incomplete. A known
 blocker therefore remains actionable. Without a known blocker, incomplete checks or

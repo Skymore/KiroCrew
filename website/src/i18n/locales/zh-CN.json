@@ -571,6 +571,8 @@
       "global": {
         "unattributed_label": "没有仓库的事件",
         "unattributed_note": "在事件开始记录所属仓库之前写入，因此无法归属到任何仓库，也不计入下方各步骤的数字。",
+        "no_step_activity_label": "不属于这些步骤的事件",
+        "no_step_activity_note": "此流水线记录过事件——事件总数统计所有已记录的事件，包括其他仓库——但没有一个属于此视图的步骤，因此各列和最近活动均显示为零。",
         "repos_label": "仓库",
         "repos_note": "记录中还包含其他仓库的事件。此看板仅显示上方所选的仓库。",
         "title": "流水线",
@@ -5570,7 +5572,9 @@
         "app_other": "{{count}} 个应用",
         "categories": "类别",
         "first_party": "第一方",
-        "sources": "来源"
+        "sources": "来源",
+        "curated_reviewed_by_the_kiro_crew_team": "已由 {{productName}} 团队审核",
+        "community_listed_not_vetted_by_the_kiro_crew_team": "社区收录，未经 {{productName}} 团队核实"
       },
       "featuredSpotlight": {
         "collection": "合集",
@@ -5630,6 +5634,10 @@
         "working": "正在信任并启用…",
         "failed": "“{{app}}”未能启用，但信任可能已经保存。请选择“重试”，或打开“设置 → 安全 → 受信任的第三方应用”查看并移除。",
         "failed_generic": "“{{app}}”未能启用，且没有做任何更改。请选择“重试”，或查看 {{productName}} 的日志。"
+      },
+      "registryTier": {
+        "curated": "团队已审核",
+        "community": "未核实"
       }
     },
     "artifactBody": {
@@ -7235,7 +7243,12 @@
       "name_is_taken_by_a_build_pinned_registry": "“{{name}}”是此版本提供的注册表名称，请另选一个",
       "included_with_this_installation": "随此安装提供",
       "trusted_source": "受信任来源",
-      "trusted_source_clones_with_your_git_credentials": "受信任来源 —— 此注册表中的应用会使用你的 Git 凭据克隆。"
+      "trusted_source_clones_with_your_git_credentials": "受信任来源 —— 此注册表中的应用会使用你的 Git 凭据克隆。",
+      "curated_tip_credentialed": "收录前已由 {{productName}} 团队审核。应用会使用你的 Git 凭据克隆。",
+      "curated_tip_credential_free": "收录前已由 {{productName}} 团队审核。应用不会使用你的 Git 凭据克隆。",
+      "community_tip_credentialed": "由贡献者经较简略的审核后收录，未经 {{productName}} 团队核实。应用仍会使用你的 Git 凭据克隆，因此请只安装你认识的应用。",
+      "community_tip_credential_free": "由贡献者经较简略的审核后收录，未经 {{productName}} 团队核实。请只安装你认识的应用。",
+      "registry_id": "ID：{{id}}"
     },
     "rejectDropdown": {
       "reject_all": "拒绝全部 —— 后续不再询问，一并拒绝",
@@ -8517,6 +8530,7 @@
     },
     "useWebSocket": {
       "response_ready": "回复已就绪",
+      "waiting_for_input": "等待你的输入",
       "a_task_needs_your_decision": "有任务需要你决策",
       "approval_required": "需要审批",
       "tool_approval": "工具审批：{{name}}",
@@ -9956,7 +9970,9 @@
       "pop_out_to_window": "弹出到窗口",
       "popped_out": "已弹出",
       "previous_chats": "以往聊天",
-      "regenerate_title_with_llm": "用 LLM 重新生成标题",
+      "regenerate_title_with_llm": "用 LLM 重新生成标题 — 当前名称可通过“撤销”恢复",
+      "auto_title": "自动命名",
+      "undo_auto_title": "撤销",
       "remove_knowledge_context": "移除知识上下文",
       "return": "返回",
       "return_this_session_to_the_main_window": "把此会话返回到主窗口",
@@ -10006,7 +10022,10 @@
       "could_not_generate_title": "无法生成标题",
       "could_not_open_side_chat": "无法打开随手问",
       "side_command_not_run": "/side 命令未执行。你的消息仍保留在输入框中。",
-      "could_not_send_to_side_chat": "无法发送到随手问"
+      "could_not_send_to_side_chat": "无法发送到随手问",
+      "run_in_terminal_liveness_probe_failed_error": "命令未发送到新终端。终端进程可能仍在运行，因此标签页保持打开。",
+      "run_in_terminal_shell_alive_error": "命令未发送到新终端，但终端进程正在运行，标签页已保持打开，可在其中运行该命令。",
+      "run_in_terminal_dispatch_rolled_back_error": "命令未发送到新终端，因此该终端已关闭。"
     },
     "chatSidebar": {
       "1_skipped_currently_selected": "（跳过 1 个 — 当前已选中）",
@@ -13328,8 +13347,8 @@
         "category_agent_description": "代理在聊天之外主动向你发送消息时",
         "category_all": "默认（所有类别）",
         "category_all_description": "未设置类别专属提示音时使用的后备音",
-        "category_approval": "审批",
-        "category_approval_description": "工具审批请求",
+        "category_approval": "审批与提问",
+        "category_approval_description": "代理需要工具审批或你的回答时",
         "category_cron": "Cron",
         "category_cron_description": "定时任务完成",
         "category_heartbeat": "心跳",
@@ -13342,8 +13361,8 @@
         "category_subagent_description": "后台子代理完成",
         "category_taskrunner": "任务",
         "category_taskrunner_description": "Task Runner完成",
-        "category_turn": "代理回复",
-        "category_turn_description": "代理在任意聊天中完成一轮时",
+        "category_turn": "对话交接",
+        "category_turn_description": "对话结束或暂停等待你输入时",
         "channel_default": "渠道默认",
         "channel_not_active_app_disabled_setting_retained": "渠道未启用（应用已禁用） — 设置已保留",
         "default_priority": "默认优先级：{{priority}}",
@@ -14178,6 +14197,7 @@
         "step_progress": "Step {{current}} of {{total}}",
         "keeps_running": "Keeps running if you leave this page.",
         "cancel": "Cancel",
+        "stop_waiting": "停止等待",
         "cancelling": "Cancelling…",
         "cancel_setup_of": "Cancel setup of {{tag}}",
         "launched_by_kiro_crew": "由 {{productName}} 启动",
@@ -14235,6 +14255,7 @@
         "launch_done": "完成 — 你的新实例已就绪，现在会出现在“你的实例”中。",
         "runs_on_gateway": "此操作在网关上运行，而不在此标签页中 — 离开页面或切换实例都会继续运行。请保持 {{productName}} 运行直到完成。",
         "unverified_cloud_note": "{{productName}} 无法验证这台机器是否有 AWS 资源",
+        "stamped_ec2_note": "由 EC2 启动器启动。其实例可能仍在运行并计费；移除只会将其从此列表中删除。要停止计费，请在 AWS 控制台中删除它。",
         "remove_warning": "移除只会将其从此列表中删除。如果这是一个云实例，其 EC2 实例会继续运行并计费 — 请在 AWS 控制台中删除它。",
         "checking_against": "Checked against profile {{profile}} in {{region}}.",
         "no_profile_set": "none set (AWS CLI default)",
@@ -14244,8 +14265,15 @@
         "sign_in_unconfirmed": "我们无法确认此次登录。下方的代码可能仍然有效 — 在此完成登录，然后连接实例。",
         "more_actions": "{{name}} 的更多操作",
         "edit_settings": "编辑设置",
+        "source_ec2": "EC2",
+        "type_ssm": "SSM",
+        "type_ssh": "SSH",
+        "source_ec2_hint": "由 EC2 启动器启动。移除只会将其从此列表中删除；EC2 实例会继续运行并计费，直到你在 AWS 中删除它。",
+        "transport_hint_ssm": "通过 AWS Systems Manager Session Manager 连接。",
+        "transport_hint_ssh": "通过 SSH 连接。",
         "edit_crew": "编辑 {{name}}",
         "save_changes": "保存更改",
+        "save_stopped_note": "已停止等待。这次保存可能已生效，也可能没有；列表显示的是当前状态。你的编辑仍保留在这里。请再次保存或取消。",
         "saving": "正在保存…",
         "failed_to_save_crew": "无法保存此实例",
         "edit_reconnect_note": "更改主机、端口或连接方式会关闭当前隧道。准备好后请重新连接。",
@@ -15013,6 +15041,35 @@
       "gray": "灰色",
       "light": "浅 {{name}}",
       "white": "白色"
+    },
+    "toolCallTitle": {
+      "and_more_other": "{{title}} 及另外 {{count}} 项",
+      "build": "构建",
+      "create": "创建 {{path}}",
+      "edit": "编辑 {{path}}",
+      "fetch": "获取 {{host}}",
+      "find_files": "查找文件“{{pattern}}”",
+      "find_files_in": "在 {{path}} 中查找文件“{{pattern}}”",
+      "git": "Git {{sub}}",
+      "git_path": "Git {{sub}} {{path}}",
+      "github": "GitHub {{noun}} {{verb}}",
+      "github_api": "GitHub API {{path}}",
+      "github_target": "GitHub {{noun}} {{verb}} {{target}}",
+      "install_dependencies": "安装依赖",
+      "lint": "Lint",
+      "list_files": "列出文件",
+      "list_files_in": "列出 {{path}} 中的文件",
+      "mcp_with_arg": "{{title}}：{{arg}}",
+      "print": "打印",
+      "read": "读取 {{path}}",
+      "read_range": "读取 {{path}}（{{from}}–{{to}}）",
+      "request": "{{method}} {{host}}",
+      "run_script": "运行脚本 {{name}}",
+      "run_tests": "运行测试",
+      "search": "搜索“{{query}}”",
+      "search_in": "在 {{path}} 中搜索“{{query}}”",
+      "search_web": "在网上搜索“{{query}}”",
+      "view_image": "查看图片 {{path}}"
     }
   },
   "memoryV2": {

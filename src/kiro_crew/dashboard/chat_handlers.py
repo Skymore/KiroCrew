@@ -99,6 +99,7 @@ from kiro_crew.dashboard.chat_utils import (
     _redact_meta_for_role,
     _remove_queued_by_id,
     _sync_dashboard_slots,
+    chat_done_payload,
     effective_session_key,
     history_corpus_unreadable,
     slot_history_key,
@@ -1015,7 +1016,7 @@ async def api_chat(request: web.Request) -> web.StreamResponse:
                     t.cancel()
         stop_msg = "🛑 [SYSTEM] Orchestration stopped by user."
         append_and_surface(state, slot, "assistant", stop_msg, "msg msg-a")
-        state.broadcast_ws("chat_done", {"slot": slot.key})
+        state.broadcast_ws("chat_done", chat_done_payload(state, slot))
         return web.json_response({"ok": True, "stopped": True})
 
     # ── Reset rounds after user guidance (not a stop) ───────────────
@@ -1083,6 +1084,24 @@ async def api_chat(request: web.Request) -> web.StreamResponse:
     # static guard that every dispatch carries a CHAT_TURN_TIMEOUT ceiling.
     # Both arms are wrapped identically: a hung peer must hit the same wall a hung
     # local turn does.
+    # The attachment ids this handler just accepted, so the ledger names the file
+    # instead of leaving the turn's input unexplained. Passed only when there ARE
+    # some: an ordinary send then calls `_run_chat` with exactly the arguments it
+    # always did, which is what keeps the many test doubles of it valid.
+    _accepted_attachments = [
+        path for paths in attachment_meta(user_meta).values() for path in paths
+    ]
+    # ``request_app`` is stamped by the app-token auth middleware, not read from
+    # the request body, so it is a fact about the caller a person cannot write --
+    # which is what lets the turn's actor come from it. Passing it is what keeps
+    # an app-authored send out of the ledger's ``user`` bucket: the actor
+    # resolver's fallback is ``user``, so a site that observes an app and stays
+    # silent records a person who never typed anything.
+    _turn_kwargs: dict = {"_directive_user_origin": not bool(request_app)}
+    if request_app:
+        _turn_kwargs["_turn_actor"] = "app"
+    if _accepted_attachments:
+        _turn_kwargs["_attachments"] = _accepted_attachments
     task = spawn_guarded_turn(
         state,
         slot,
@@ -1091,12 +1110,7 @@ async def api_chat(request: web.Request) -> web.StreamResponse:
             (
                 relay_remote_turn(state, slot, message)
                 if slot.is_remote
-                else _run_chat(
-                    state,
-                    slot,
-                    message,
-                    _directive_user_origin=not bool(request_app),
-                )
+                else _run_chat(state, slot, message, **_turn_kwargs)
             ),
         ),
     )

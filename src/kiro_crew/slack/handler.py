@@ -136,6 +136,7 @@ from kiro_crew.slack.format import (
     TRUNCATION_NOTICE,
     _convert_tables,
     extract_options,
+    is_wait_identity,
     render_one_for_slack,
     split_message,
     strip_thinking_tags,
@@ -2586,6 +2587,19 @@ async def _handle_compact_command(
         sessions.release(session_key)
 
 
+def _is_sessions_keyword(text: str) -> bool:
+    """True when the whole stripped, lower-cased message is the bare
+    ``sessions`` keyword.
+
+    The ONE predicate shared by the native ``handle_message`` branch, the
+    transport ``maybe_handle_keyword_command`` branch, and the linked-thread
+    fall-through in ``maybe_route_linked_thread`` — keeping all three sites on
+    one helper guarantees the intercept matches exactly what the keyword
+    branches match, so the keyword cannot be swallowed by a linked thread.
+    """
+    return text.strip().lower() == "sessions"
+
+
 async def maybe_handle_keyword_command(
     text: str,
     slack: SlackClientOps,
@@ -2631,7 +2645,7 @@ async def maybe_handle_keyword_command(
     # global default), matching handle_message's main path.
     _agent = _thread_agents.get(session_key) or channel_agent or _get_default_agent() or None
     # ── Sessions keyword: list recent sessions (owner/allowed only) ──
-    if handle_sessions and text.strip().lower() == "sessions":
+    if handle_sessions and _is_sessions_keyword(text):
         if is_owner(user_id) or is_allowed_user(user_id):
             sel().log_api_access(
                 caller=user_id,
@@ -2744,8 +2758,9 @@ async def maybe_route_linked_thread(
     Returns ``True`` when the caller MUST return without further handling —
     either the message was routed into the linked dashboard slot, or an
     unauthorized user was denied. Returns ``False`` when normal routing should
-    continue: no dashboard state, no linked slot, or a ``!``-bang command
-    (which is intentionally allowed to fall through to normal handling).
+    continue: no dashboard state, no linked slot, a ``!``-bang command, or the
+    bare ``sessions`` keyword (both intentionally allowed to fall through to
+    normal handling, so control commands stay reachable in a linked thread).
 
     *route_pinned* makes *target_slot* authoritative instead of resolving the
     thread's CURRENT owner. An OPTIONS answer is accepted against the
@@ -2784,9 +2799,17 @@ async def maybe_route_linked_thread(
         await slack.post_message(channel, "Not authorized.", reply_ts)
         return True
 
-    # Let bang commands fall through to normal handling.
+    # Let bang commands and the bare ``sessions`` keyword fall through to
+    # normal handling. The predicate matches the keyword branches exactly
+    # (whole stripped, lower-cased message), so "sessions please" still routes
+    # to the linked slot. Other keywords (status, spawn, cron, ...) remain
+    # link-routed on purpose. A pinned OPTIONS answer is exempt: its text is a
+    # selected label being DELIVERED to the conversation that asked, and
+    # dropping it into the picker would strand that conversation forever.
     _first_word = text.strip().split(maxsplit=1)[0] if text.strip() else ""
     if _first_word in _BANG_TO_SLASH:
+        return False
+    if not route_pinned and _is_sessions_keyword(text):
         return False
 
     _linked_slot_key = _linked_slot.key
@@ -2985,7 +3008,7 @@ async def handle_message(
         return
 
     # ── Sessions keyword: list recent sessions ──
-    if text.strip().lower() == "sessions":
+    if _is_sessions_keyword(text):
         if is_owner(user_id) or is_allowed_user(user_id):
             sel().log_api_access(
                 caller=user_id,
@@ -3907,7 +3930,13 @@ async def handle_message(
                 # streaming message now so Slack doesn't show an error.
                 # _ensure_stream_started() will open a new message when
                 # the next text chunk arrives after wait returns.
-                if tool_name == "wait" and use_slack_stream and stream_ts:
+                # Keyed on the tool's programmatic identity when the transport
+                # sent one (same rule as SlackRenderer); the title compare is the
+                # fallback for a frame without ``_meta.kiro``.
+                _is_wait = (
+                    is_wait_identity(event.tool_name) if event.tool_name else tool_name == "wait"
+                )
+                if _is_wait and use_slack_stream and stream_ts:
                     if _active_task_id:
                         _elapsed = _tool_elapsed_str()
                         _cancel_tool_timer()
