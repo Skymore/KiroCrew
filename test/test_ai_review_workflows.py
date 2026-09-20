@@ -11878,3 +11878,65 @@ class TestForkGptLaneMantleEgress:
                 f"{lane} job {name!r} runs no mantle-backed model, so allowing "
                 f"{self.ENDPOINT} widens its egress for nothing"
             )
+
+
+class TestForkLaneClaudeInstallerEgress:
+    """The fork reviewers fetch Claude Code from Anthropic's installer hosts.
+
+    `anthropics/claude-code-action` installs its runtime with
+    `curl -fsSL https://claude.ai/install.sh | bash`, and that script downloads
+    the version manifest and the binary from
+    `https://downloads.claude.ai/claude-code-releases/...`. Neither host is a
+    GitHub or npm host, so a blocking egress allowlist built for bun and the
+    Bedrock call refuses the very first fetch: harden-runner logs
+    `domain not allowed: claude.ai`, curl exits 7 on all three install
+    attempts, the action dies `Failed to install Claude Code after 3 attempts`
+    before any model call, and the lane posts `review incomplete`. `PR
+    Readiness` aggregates the Opus lane, so every fork PR goes red at once.
+
+    `workflow_run` lanes always execute the DEFAULT branch's copy of the yaml,
+    so a PR editing these files cannot exercise its own change. This test is
+    the only pre-merge guard the coupling has.
+    """
+
+    ENDPOINTS = ("claude.ai:443", "downloads.claude.ai:443")
+    ACTION = "anthropics/claude-code-action"
+
+    @classmethod
+    def _runs_a_model(cls, job: dict) -> bool:
+        return any(cls.ACTION in str(step.get("uses") or "") for step in job.get("steps") or ())
+
+    @pytest.mark.parametrize("lane", FORK_REVIEW_LANES)
+    def test_every_model_job_allows_both_installer_hosts(self, lane: str) -> None:
+        checked = 0
+        for name, job in _lane_jobs(lane).items():
+            if not self._runs_a_model(job):
+                continue
+            endpoints = _blocking_endpoints(job)
+            if endpoints is None:
+                continue
+            checked += 1
+            for endpoint in self.ENDPOINTS:
+                assert endpoint in endpoints, (
+                    f"{lane} job {name!r} runs {self.ACTION} behind a blocking egress "
+                    f"policy but does not allow {endpoint}, so the Claude Code install "
+                    "is refused and the lane posts `review incomplete` without reviewing"
+                )
+        assert checked, f"{lane} has no blocking-egress {self.ACTION} job to check"
+
+    @pytest.mark.parametrize("lane", FORK_REVIEW_LANES)
+    def test_jobs_that_run_no_model_keep_the_narrower_allowlist(self, lane: str) -> None:
+        # Least privilege, as for the bun host: only the job that installs
+        # Claude Code reaches Anthropic's hosts. `fork-security-scope-review.yml`
+        # blocks egress in four jobs and runs the model in exactly one.
+        for name, job in _lane_jobs(lane).items():
+            if self._runs_a_model(job):
+                continue
+            endpoints = _blocking_endpoints(job)
+            if endpoints is None:
+                continue
+            for endpoint in self.ENDPOINTS:
+                assert endpoint not in endpoints, (
+                    f"{lane} job {name!r} runs no model and installs no Claude Code, so "
+                    f"allowing {endpoint} widens its egress for nothing"
+                )

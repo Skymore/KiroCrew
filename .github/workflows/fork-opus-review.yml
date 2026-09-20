@@ -88,6 +88,8 @@ jobs:
             release-assets.githubusercontent.com:443
             codeload.github.com:443
             registry.npmjs.org:443
+            claude.ai:443
+            downloads.claude.ai:443
 
       - name: Resolve and validate PR (authoritative from GitHub)
         id: pr

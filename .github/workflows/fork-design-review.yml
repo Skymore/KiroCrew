@@ -84,6 +84,8 @@ jobs:
             github-production-user-asset-6210df.s3.amazonaws.com:443
             codeload.github.com:443
             registry.npmjs.org:443
+            claude.ai:443
+            downloads.claude.ai:443
 
       - name: Resolve and validate PR (authoritative from GitHub)
         id: pr
