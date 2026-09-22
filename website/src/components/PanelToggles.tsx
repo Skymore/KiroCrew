@@ -1,5 +1,5 @@
+import { PanelBottom, PanelRight } from 'lucide-react'
 import { Btn } from './ui'
-import { PanelBottomLight, PanelBottomSolid, PanelRightLight, PanelRightSolid } from './icons/panels'
 import { useAppSelector } from '../store'
 import { selectActiveSlotProject } from '../store/chatSlice'
 import { toggleBottomTerminal, useBottomTerminalOpen } from '../hooks/useBottomTerminal'
@@ -28,8 +28,6 @@ export default function PanelToggles({
   const workspaceActive = workspaceOpen ?? activityOpen
   const cwd = useAppSelector(selectActiveSlotProject)
   const terminalActive = terminalOpen || terminalPoppedOut
-  const TerminalIcon = terminalActive ? PanelBottomLight : PanelBottomSolid
-  const WorkspaceIcon = workspaceActive ? PanelRightLight : PanelRightSolid
   const stateClass = (active: boolean) => active
     ? 'text-accent bg-accent/10'
     : 'text-muted hover:text-text hover:bg-bg-hover'
@@ -60,7 +58,7 @@ export default function PanelToggles({
           aria-pressed={terminalActive}
           onClick={toggleTerminal}
         >
-          <TerminalIcon size={14} />
+          <PanelBottom className="lucide-inline text-[14px]" aria-hidden="true" />
         </Btn>
       )}
       {/* The workspace/side-panel toggle is unconditional: every title row that
@@ -74,7 +72,7 @@ export default function PanelToggles({
         aria-pressed={workspaceActive}
         onClick={() => window.dispatchEvent(new Event('toggle-activity-panel'))}
       >
-        <WorkspaceIcon size={14} />
+        <PanelRight className="lucide-inline text-[14px]" aria-hidden="true" />
       </Btn>
     </div>
   )

@@ -44,31 +44,35 @@ describe('workspace panel toggles', () => {
     expect(screen.queryByRole('button', { name: 'hooks.useKeyboardShortcuts.toggle_terminal' })).toBeNull()
   })
 
-  it('renders bottom panel before side panel in one two-button group', () => {
+  it('renders Lucide bottom and side panels in one two-button group', () => {
     const { container } = render(<PanelToggles workspaceOpen={false} />)
     const controls = container.querySelector('[data-panel-toggles]') as HTMLElement
     const buttons = Array.from(controls.querySelectorAll('button'))
     expect(buttons).toHaveLength(2)
     expect(buttons[0]).toHaveAccessibleName('hooks.useKeyboardShortcuts.toggle_terminal')
     expect(buttons[1]).toHaveAccessibleName('hooks.useKeyboardShortcuts.toggle_side_panel')
+    expect(buttons[0].querySelector('svg')).toHaveClass('lucide-panel-bottom')
+    expect(buttons[1].querySelector('svg')).toHaveClass('lucide-panel-right')
     for (const button of buttons) {
       expect(button.className).toContain('w-7')
       expect(button.className).toContain('h-7')
-      expect(button.querySelector('svg')).toHaveAttribute('width', '14')
-      expect(button.querySelector('svg')).toHaveAttribute('height', '14')
+      expect(button.querySelector('svg')).toHaveClass('lucide-inline', 'text-[14px]')
+      expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     }
     expect(controls.className).toContain('gap-1.5')
   })
 
-  it('reflects open state in the panel glyphs and pressed state', () => {
+  it('reflects open state in the button styling and pressed state', () => {
     terminal.open = true
     render(<PanelToggles workspaceOpen />)
     const terminalButton = screen.getByRole('button', { name: 'hooks.useKeyboardShortcuts.toggle_terminal' })
     const workspaceButton = screen.getByRole('button', { name: 'hooks.useKeyboardShortcuts.toggle_side_panel' })
     expect(terminalButton).toHaveAttribute('aria-pressed', 'true')
     expect(workspaceButton).toHaveAttribute('aria-pressed', 'true')
-    expect(terminalButton.querySelector('rect.pi-pane')).toHaveAttribute('fill-opacity', '0.45')
-    expect(workspaceButton.querySelector('rect.pi-pane')).toHaveAttribute('fill-opacity', '0.45')
+    expect(terminalButton.className).toContain('text-accent')
+    expect(terminalButton.className).toContain('bg-accent/10')
+    expect(workspaceButton.className).toContain('text-accent')
+    expect(workspaceButton.className).toContain('bg-accent/10')
   })
 
   it('keeps the side-panel toggle when terminals are disabled', () => {

@@ -109,8 +109,7 @@ describe('SidePanel workspace controls and retained browser-tab frame', () => {
     }
     expect(fullscreen.querySelector('svg')?.getAttribute('class') ?? '').toContain('w-3.5')
     for (const control of [terminal, side]) {
-      expect(control.querySelector('svg')).toHaveAttribute('width', '14')
-      expect(control.querySelector('svg')).toHaveAttribute('height', '14')
+      expect(control.querySelector('svg')).toHaveClass('lucide-inline', 'text-[14px]')
     }
     expect(fullscreen.closest('[data-panel-controls-host="fullscreen"]')?.querySelectorAll('button')).toHaveLength(1)
     expect(terminal.closest('[data-panel-toggles]')?.querySelectorAll('button')).toHaveLength(2)

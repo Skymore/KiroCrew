@@ -3557,9 +3557,10 @@ export default function App() {
         // ancestor happens to establish a containing block, and the shell is the
         // app area either way. It stays MOUNTED and slides — unmounting it would
         // tear down the notification/metrics popovers it owns and lose their
-        // state on every peek. TOPBAR_FOCUS_Z (62) clears the whole chat-pane
-        // stack (max 61) and the rail (50) while staying under the update banner
-        // (70), side sheets (89/90) and every modal (100+).
+        // state on every peek. TOPBAR_FOCUS_Z clears the whole chat-pane
+        // stack (max 61), workspace fullscreen (65), and the rail (50), while
+        // staying under the update banner (70), side sheets (89/90) and every
+        // modal (100+).
         style={focusActive
           ? {
             position: 'absolute',
@@ -4736,7 +4737,9 @@ export default function App() {
                 top: FOCUS_INSET,
                 bottom: 0,
                 width: railWidthFor({ isMobile: false, collapsed: effectiveCollapsed }) - 16,
-                zIndex: 62,
+                // Both focus chrome surfaces must clear workspace fullscreen;
+                // one shared layer keeps their peek behaviour symmetric.
+                zIndex: TOPBAR_FOCUS_Z,
                 transform: railPeek.open ? 'translateX(0)' : 'translateX(calc(-100% - 12px))',
                 transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
                 pointerEvents: railPeek.open ? 'auto' : 'none',

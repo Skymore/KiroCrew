@@ -302,8 +302,8 @@ describe('ChatPage — session-header panel controls', () => {
         expect(icon.getAttribute('class') ?? '').toContain('w-3.5')
         expect(icon.getAttribute('class') ?? '').toContain('h-3.5')
       } else {
-        expect(icon).toHaveAttribute('width', '14')
-        expect(icon).toHaveAttribute('height', '14')
+        expect(icon.getAttribute('class') ?? '').toContain('lucide-inline')
+        expect(icon.getAttribute('class') ?? '').toContain('text-[14px]')
       }
     }
     expect(controls.map(control => Array.from(host.querySelectorAll('[role="button"],button')).indexOf(control)))

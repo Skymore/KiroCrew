@@ -7054,7 +7054,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
                 </Clickable>
               ))}
               </div>
-              {!embedMode && !popout && !activityOpen && (
+              {!embedMode && !popout && (!activityOpen || search.isOpen) && (
                 // Session-window actions and workspace visibility are separate
                 // two-action regions. The inset hairline preserves that category
                 // boundary without moving the trailing Side-panel toggle.

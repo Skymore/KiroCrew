@@ -2202,7 +2202,8 @@ body.mc-focus-mode .linux-electron .focus-caption-reserve{padding-right:112px}
    which grew the strip back under the pointer, which re-opened it — flickering
    indefinitely without the user moving the mouse. Anything that changes the hit
    target under a resting pointer can oscillate like that, so the strip is instead
-   COVERED by the chrome it summons (z-61 against the chrome's z-62): while the
+   COVERED by the chrome it summons (the strip stays below the chrome's focus
+   layer): while the
    chrome is up, hover and clicks land on the header or rail, which keeps them open
    through their own surface handlers, and nothing resizes. */
 .focus-peek-top{height:10px}
