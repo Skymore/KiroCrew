@@ -6078,6 +6078,14 @@
       "close_failed": "Impossible d'arrêter le shell de ce terminal sur le serveur. Il sera nettoyé automatiquement.",
       "closing_terminal": "Fermeture du terminal…"
     },
+    "tabCloseMenu": {
+      "close_terminals_body_one": "{{count}} terminal va se fermer et son shell en cours d'exécution sera arrêté.",
+      "close_terminals_body_many": "{{count}} terminaux vont se fermer et leurs shells en cours d'exécution seront arrêtés.",
+      "close_terminals_body_other": "{{count}} terminaux vont se fermer et leurs shells en cours d'exécution seront arrêtés.",
+      "close_terminals_button": "Fermer les terminaux",
+      "close_terminals_title": "Fermer les terminaux ?",
+      "unsaved_files_lost": "Ces fichiers contiennent des modifications non enregistrées qui seront perdues."
+    },
     "chatInput": {
       "auto_jev": "Automatique (Jev)",
       "auto_jev_desc": "Laisser Jev choisir : agir maintenant ou exécuter ensuite",

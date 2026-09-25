@@ -5982,6 +5982,13 @@
       "close_failed": "Die Shell dieses Terminals konnte auf dem Server nicht beendet werden und wird automatisch aufgeräumt.",
       "closing_terminal": "Terminal wird geschlossen…"
     },
+    "tabCloseMenu": {
+      "close_terminals_body_one": "{{count}} Terminal wird geschlossen und seine laufende Shell beendet.",
+      "close_terminals_body_other": "{{count}} Terminals werden geschlossen und ihre laufenden Shells beendet.",
+      "close_terminals_button": "Terminals schließen",
+      "close_terminals_title": "Terminals schließen?",
+      "unsaved_files_lost": "Diese Dateien enthalten nicht gespeicherte Änderungen, die verloren gehen."
+    },
     "chatInput": {
       "auto_jev": "Automatisch (Jev)",
       "auto_jev_desc": "Jev entscheiden lassen: jetzt handeln oder danach ausführen",

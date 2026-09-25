@@ -5982,6 +5982,13 @@
       "close_failed": "सर्वर पर इस टर्मिनल का शेल बंद नहीं किया जा सका। यह स्वतः साफ़ हो जाएगा।",
       "closing_terminal": "टर्मिनल बंद हो रहा है…"
     },
+    "tabCloseMenu": {
+      "close_terminals_body_one": "{{count}} टर्मिनल बंद होगा और उसका चल रहा शेल रुक जाएगा।",
+      "close_terminals_body_other": "{{count}} टर्मिनल बंद होंगे और उनके चल रहे शेल रुक जाएँगे।",
+      "close_terminals_button": "टर्मिनल बंद करो",
+      "close_terminals_title": "टर्मिनल बंद करने हैं?",
+      "unsaved_files_lost": "इन फ़ाइलों में बिना सहेजे बदलाव हैं, जो खो जाएँगे।"
+    },
     "chatInput": {
       "auto_jev": "स्वतः (Jev)",
       "auto_jev_desc": "Jev चुने: अभी लागू करें, या बाद में चलाएँ",

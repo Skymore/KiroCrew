@@ -5886,6 +5886,12 @@
       "close_failed": "サーバー上でこのターミナルのシェルを停止できませんでした。自動的にクリーンアップされます。",
       "closing_terminal": "ターミナルを閉じています…"
     },
+    "tabCloseMenu": {
+      "close_terminals_body_other": "{{count}} 個のターミナルを閉じ、実行中のシェルを停止します。",
+      "close_terminals_button": "ターミナルを閉じる",
+      "close_terminals_title": "ターミナルを閉じますか？",
+      "unsaved_files_lost": "次のファイルの保存されていない変更は失われます。"
+    },
     "chatInput": {
       "auto_jev": "自動 (Jev)",
       "auto_jev_desc": "Jev に任せる: すぐ反映するか、後で実行するか",

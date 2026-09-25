@@ -6078,6 +6078,14 @@
       "close_failed": "No se pudo detener el shell de este terminal en el servidor. Se limpiará automáticamente.",
       "closing_terminal": "Cerrando terminal…"
     },
+    "tabCloseMenu": {
+      "close_terminals_body_one": "Se cerrará {{count}} terminal y se detendrá su shell en ejecución.",
+      "close_terminals_body_many": "Se cerrarán {{count}} terminales y se detendrán sus shells en ejecución.",
+      "close_terminals_body_other": "Se cerrarán {{count}} terminales y se detendrán sus shells en ejecución.",
+      "close_terminals_button": "Cerrar terminales",
+      "close_terminals_title": "¿Cerrar terminales?",
+      "unsaved_files_lost": "Estos archivos tienen cambios sin guardar que se perderán."
+    },
     "chatInput": {
       "auto_jev": "Automático (Jev)",
       "auto_jev_desc": "Que Jev elija: actuar ahora o ejecutar después",

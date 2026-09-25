@@ -1,4 +1,4 @@
-import TabCloseMenu, { openTabCloseMenu } from '../../components/TabCloseMenu'
+import TabCloseMenu, { batchCloseConfirm, openTabCloseMenu } from '../../components/TabCloseMenu'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useState, useRef, useEffect, useCallback, useMemo, Fragment, type ReactNode } from 'react'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -579,12 +579,10 @@ export default function SidePanel({
   currentSlotRef.current = slot
   const handleCloseTabs = async (targets: PanelTab[]) => {
     if (confirmOpen || targets.length === 0) return
-    if (targets.some(tab => tab.kind === 'file' && tab.content !== tab.savedContent)) {
-      if (!await confirm({
-        title: i18nT('components.markdownPanel.discard_unsaved_changes'),
-        confirmLabel: i18nT('components.markdownPanel.discard_changes_button'),
-      })) return
-    }
+    const dirty = targets.filter(tab => tab.kind === 'file' && tab.content !== tab.savedContent)
+    const shells = targets.filter(tab => tab.kind === 'terminal' && tab.sessionId).length
+    const ask = batchCloseConfirm(dirty.map(tab => ({ name: tab.title, path: tab.path })), shells)
+    if (ask && !await confirm(ask)) return
     if (currentSlotRef.current !== slot) return
     targets.forEach(tab => handleCloseTab(tab.id))
   }

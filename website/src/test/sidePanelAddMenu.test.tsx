@@ -8,7 +8,7 @@
  * document-level mousedown listener this replaced.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTestStore } from './helpers'
@@ -257,6 +257,8 @@ describe('workspace tab close menu', () => {
     fireEvent.contextMenu(screen.getByRole('tab', { name: /Browser/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Close all tabs' }))
     expect(await screen.findByText('Discard unsaved changes?')).toBeTruthy()
+    // The dialog names what is lost rather than asking blind.
+    expect(within(screen.getByRole('dialog')).getByText('draft.md')).toHaveAttribute('title', '/tmp/draft.md')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('tab', { name: /draft.md/ })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /Browser/ })).toBeTruthy()
@@ -266,6 +268,20 @@ describe('workspace tab close menu', () => {
     await waitFor(() => expect(screen.queryByRole('tab', { name: /draft.md/ })).toBeNull())
     expect(screen.queryByRole('tab', { name: /Browser/ })).toBeNull()
     expect(screen.getByRole('tab', { name: 'Files' })).toBeTruthy()
+  })
+
+  it('counts the shells a bulk close would stop before closing them', async () => {
+    renderPanel()
+    act(() => { panelController.openTerminal() })
+    act(() => { panelController.openTerminal() })
+    act(() => { panelController.openView('browser') })
+    expect(screen.getAllByRole('tab', { name: /Terminal/ })).toHaveLength(2)
+    fireEvent.contextMenu(screen.getByRole('tab', { name: /Browser/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close all tabs' }))
+    expect(await screen.findByText('2 terminals will close and their running shells will stop.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close terminals' }))
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /Terminal/ })).toBeNull())
+    expect(screen.queryByRole('tab', { name: /Browser/ })).toBeNull()
   })
 
   // Same hold as the terminal strip: lifting in place opens the menu, and the
