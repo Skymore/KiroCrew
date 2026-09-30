@@ -41,7 +41,7 @@ import { useSidePanelDock } from '../../hooks/useSidePanelDock'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator
 } from '../../components/ui/dropdown-menu'
-import { ContentSkeleton } from '../../components/ui'
+import { Btn, ContentSkeleton } from '../../components/ui'
 import ErrorNotice from '../../components/ErrorNotice'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import { fetchFileRead, fileReadQueryKey, FILE_READ_STALE_MS, isPartialRead } from '../../utils/fileReadQuery'
@@ -1239,17 +1239,19 @@ export default function SidePanel({
             toggle keeps the same bounding box as the closed-panel title row. */}
         {((canDockBottom && !isMobile) || toggleFullscreen || closable) && (
           <div className={`${PANEL_HEADER_ACTIONS_CLS} self-center`} data-testid="panel-controls-panel-shape">
-            {canDockBottom && !isMobile && (
+            {/* Hidden while fullscreen: the layer covers both dock positions, so
+                a dock choice there would change nothing the user can see. */}
+            {canDockBottom && !isMobile && !fullscreen && (
               <div className={`${PANEL_HEADER_ACTIONS_CLS} self-center`} data-testid="panel-controls-dock">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      className={`${PANEL_HEADER_ACTION_CLS} text-muted hover:text-text hover:bg-bg-hover data-[state=open]:bg-bg-hover data-[state=open]:text-text cursor-pointer`}
+                    <Btn
+                      className={`${PANEL_HEADER_ACTION_CLS} text-muted hover:text-text hover:bg-bg-hover data-[state=open]:bg-bg-hover data-[state=open]:text-text`}
                       title={i18nT('pages.chatSidebar.more_options')}
                       aria-label={i18nT('pages.chatSidebar.more_options')}
                     >
                       <MoreHorizontal className="lucide-inline w-3.5 h-3.5" />
-                    </button>
+                    </Btn>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" sideOffset={6} className="min-w-[200px]">
                     <DropdownMenuItem className="gap-2.5 py-2" onSelect={() => setDock(isBottom ? 'right' : 'bottom')}>
@@ -1262,27 +1264,27 @@ export default function SidePanel({
             )}
             {toggleFullscreen && (
               <div className={`${PANEL_HEADER_ACTIONS_CLS} self-center`} data-testid="panel-controls-fullscreen">
-                <button
+                <Btn
                   data-testid="workspace-fullscreen-toggle"
-                  className={`${PANEL_HEADER_ACTION_CLS} cursor-pointer ${fullscreen ? 'text-accent bg-accent/10' : 'text-muted hover:text-text hover:bg-bg-hover'}`}
+                  className={`${PANEL_HEADER_ACTION_CLS} ${fullscreen ? 'text-accent bg-accent/10' : 'text-muted hover:text-text hover:bg-bg-hover'}`}
                   onClick={toggleFullscreen}
                   title={fullscreen ? i18nT('components.markdownPanel.exit_full_screen') : i18nT('components.markdownPanel.full_screen')}
                   aria-label={fullscreen ? i18nT('components.markdownPanel.exit_full_screen') : i18nT('components.markdownPanel.full_screen')}
                 >
                   {fullscreen ? <Minimize2 className="lucide-inline w-3.5 h-3.5" /> : <Maximize2 className="lucide-inline w-3.5 h-3.5" />}
-                </button>
+                </Btn>
               </div>
             )}
             {!toggleFullscreen && closable && (
               <div className={`${PANEL_HEADER_ACTIONS_CLS} self-center`}>
-                <button
-                  className={`${PANEL_HEADER_ACTION_CLS} cursor-pointer text-muted hover:text-text hover:bg-bg-hover`}
+                <Btn
+                  className={`${PANEL_HEADER_ACTION_CLS} text-muted hover:text-text hover:bg-bg-hover`}
                   onClick={() => { void closePanel() }}
                   title={i18nT('pages.chat.sidePanel.close_panel')}
                   aria-label={i18nT('pages.chat.sidePanel.close_panel')}
                 >
                   <SidePanelGlyph light size={14} />
-                </button>
+                </Btn>
               </div>
             )}
           </div>

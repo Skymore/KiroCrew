@@ -472,7 +472,11 @@ workspace-visibility pair are separate regions, divided by a hairline and an 8px
 inner inset. When the SidePanel is open, its dock menu and Fullscreen control form
 the panel-shape region, while Bottom panel and Side panel remain the separate
 workspace-visibility region. Every region therefore contains at most two actions
-without moving an action into a menu. The divider and inset sit only on the
+without moving an action into a menu. While the workspace is fullscreen the dock menu
+is hidden, since a dock choice under the fullscreen layer would change nothing
+visible. The Side-panel toggle draws `SidePanelGlyph`, so its pane follows where the
+panel docks; the Bottom-panel toggle draws the nav rail Terminal row's
+`SquareTerminal`, so the two never share a glyph when the side panel docks bottom. The divider and inset sit only on the
 visibility region's leading edge, so the Side panel toggle's bounding box is
 identical before and after the panel opens.
 
@@ -488,7 +492,11 @@ to the Side-panel toggle because the two panels share the workspace edge and are
 opened and closed together. The nav rail keeps its Terminal row: it is the only pointer
 entry on routes other than chat and in the phone drawer, where neither host of these
 controls renders, so without it the docked terminal has no pointer entry there. Both entries
-read the panel's one open flag, so their lit states cannot disagree.
+read the panel's one open flag, so their lit states cannot disagree. Workspace fullscreen
+covers the docked terminal, so while it is on both entries, and the chord, read an open
+terminal as hidden, and activating one leaves fullscreen to bring that terminal back
+rather than closing it. The `terminal-new` chord adds its tab to the same docked panel, so
+it leaves fullscreen first as well.
 
 Workspace fullscreen expands the existing SidePanel subtree across the shell's
 content grid while retaining the topbar. It must not remount tab bodies, editor
@@ -497,6 +505,8 @@ visible fullscreen control exits while focus is inside a PTY. It is desktop-only
 the phone has no activity-bar slot to expand, so a file there keeps its own
 full-screen action. Only focus mode puts the fullscreen strip at the window's top
 corner, so only focus mode reserves the Windows and Linux caption band on it.
+The computer-use live view stays above the fullscreen layer and in reach, since it
+shows and controls an agent driving the real desktop.
 
 ### Split view: leading edge and focus
 

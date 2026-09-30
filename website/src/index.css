@@ -2606,7 +2606,8 @@ body.mc-focus-mode .linux-electron .focus-caption-reserve{padding-right:112px}
    which grew the strip back under the pointer, which re-opened it — flickering
    indefinitely without the user moving the mouse. Anything that changes the hit
    target under a resting pointer can oscillate like that, so the strip is instead
-   COVERED by the chrome it summons (z-61 against the chrome's z-62): while the
+   COVERED by the chrome it summons (the strip stays below the chrome's focus
+   layer): while the
    chrome is up, hover and clicks land on the header or rail, which keeps them open
    through their own surface handlers, and nothing resizes. */
 .focus-peek-top{height:10px}
@@ -2879,6 +2880,15 @@ body.mc-focus-mode.mc-focus-rail .focus-chrome-rail{
   height: auto !important;
   z-index: 65;
 }
+/* In focus mode the fullscreen layer also covers the peek triggers' band. Lift
+   them above it (65) and below the chrome they summon (TOPBAR_FOCUS_Z, 67, in
+   src/lib/themeDecorLayer.ts), so the edges still summon the topbar and rail. */
+[data-workspace-fullscreen] .focus-peek-top,
+[data-workspace-fullscreen] .focus-peek-rail { z-index: 66; }
+/* The computer-use live view (z-[60]) shows and controls an agent driving the
+   real desktop, so fullscreen must not bury it: lift it above the fullscreen
+   layer (65) and keep it below the focus chrome (TOPBAR_FOCUS_Z, 67). */
+[data-workspace-fullscreen] [data-above-workspace-fullscreen] { z-index: 66; }
 /* Outside focus mode the fullscreen strip sits under the 42px topbar, which
    already reserves the caption band. Focus mode collapses that row to
    FOCUS_INSET, putting the strip at the window's top corner; Windows and Linux

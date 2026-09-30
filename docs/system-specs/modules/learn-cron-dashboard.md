@@ -4274,7 +4274,13 @@ so editor drafts, browser frames, terminal scrollback and tab order survive both
 directions. A `MarkdownPanel` hosted under that context omits its file-only fullscreen
 action; standalone previews outside the context retain it. The covered shell children
 go inert; the topbar stays interactive, and in focus mode so do the peek triggers and
-the rail overlay, which paint above the panel. Escape is handled after
+the rail overlay, which paint above the panel. The computer-use live view, which shows
+and controls an agent driving the real desktop, is a shell child outside the content
+column and carries `data-above-workspace-fullscreen`, so it stays out of the inert walk and
+is lifted above the fullscreen layer; it is non-modal, so it never holds Escape.
+Fullscreen lifts the peek triggers above
+its own layer so the window edges still summon the chrome, and the rail's exemption
+follows focus mode, so toggling focus mode during fullscreen updates it. Escape is handled after
 nested dialogs, menus, editors and annotation composers decline it. A focused xterm
 consumes Escape before the workspace handler, so terminal programs keep the key and the
 visible fullscreen button is the exit. Closing the SidePanel, opening conversation
@@ -4287,7 +4293,12 @@ pair forming the session-window region and the second pair forming the
 workspace-visibility region. An open SidePanel keeps its fused browser tabs and
 half-card frame: the dock menu and Fullscreen control form the panel-shape region,
 followed by Bottom panel and Side panel in the workspace-visibility region. Each
-region contains at most two actions. A hairline and 8px inner inset on the
+region contains at most two actions. The dock menu is hidden while the workspace is
+fullscreen, because the fullscreen layer covers both dock positions. The Side-panel
+toggle draws `SidePanelGlyph`, so its pane follows where the panel docks, as every
+other side-panel control does. The Bottom-panel toggle draws the nav rail Terminal
+row's `SquareTerminal`, so the two toggles never share a glyph when the side panel
+docks bottom. A hairline and 8px inner inset on the
 visibility region distinguish the categories without moving any action into a menu.
 The browser tabs are 32px chips fused to the body seam, 8px below the strip's top
 edge, so their center sits 4px under the 28px action cells; the `+` trigger follows
@@ -4305,7 +4316,11 @@ terminal, sitting next to the Side-panel toggle because the two panels share the
 edge; the nav rail's Terminal row stays as the entry every other route and the phone
 drawer reach (the phone renders neither host of these controls), and the rebindable
 `terminal` chord is the keyboard entry. Both pointer entries, and the chord, exit
-workspace fullscreen before toggling, so the docked panel is never opened behind it.
+workspace fullscreen first, so the docked panel is never opened behind it. Fullscreen
+covers an open docked terminal, so while it is on each entry reads that terminal as hidden
+(unlit, "Show terminal") and only leaves fullscreen, which brings it back; toggling as well
+would close it (`lib/terminalEntry.ts`). The `terminal-new` chord adds its tab to that
+same docked panel, so it also leaves fullscreen first.
 `PanelToggles` renders the terminal control only while
 `dashboard.terminal.enabled` holds, and renders the side-panel control unconditionally —
 every row that hosts these controls owns that panel's edge, so a row without it would

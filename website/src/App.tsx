@@ -108,6 +108,7 @@ import { TerminalHostContext } from './hooks/useTerminalCommand'
 // Side effect: closes a terminal tab when its shell exits (main window and popout).
 import './utils/terminalExitClose'
 import { useTerminalPoppedOut, focusPopout as focusTerminalPopout } from './utils/terminalPopout'
+import { activateTerminalEntry, isTerminalShown } from './lib/terminalEntry'
 import MigrationCheck from './components/MigrationCheck'
 import CrashReportNotice from './components/CrashReportNotice'
 import { ImportSessionOutcomeNotice } from './components/ImportSessionItem'
@@ -1276,7 +1277,7 @@ export default function App() {
   const { appBadges, discoverBadges, railAppBadges, railAppRunStates } = useRailBadges(approvalCount)
 
   const { shortcutsOpen, setShortcutsOpen, toggleShortcutsModal, commandPalette, agentSwitchNotice } = useShellKeyboard({
-    toggleFocusMode, toggleNav: () => toggleNav(), terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject, exitWorkspaceFullscreen,
+    toggleFocusMode, toggleNav: () => toggleNav(), terminalEnabled, isPopout, isEmbed, terminalPoppedOut, activeSlotProject, workspaceFullscreen, exitWorkspaceFullscreen,
   })
 
   const { kiroUsageOpen, setKiroUsageOpen, kiroUsageState, kiroCreditSurface, kiroAccountEntry } = useKiroUsageReadout()
@@ -1832,9 +1833,10 @@ export default function App() {
         // ancestor happens to establish a containing block, and the shell is the
         // app area either way. It stays MOUNTED and slides — unmounting it would
         // tear down the notification/metrics popovers it owns and lose their
-        // state on every peek. TOPBAR_FOCUS_Z (62) clears the whole chat-pane
-        // stack (max 61) and the rail (50) while staying under the update banner
-        // (70), side sheets (89/90) and every modal (100+).
+        // state on every peek. TOPBAR_FOCUS_Z clears the whole chat-pane
+        // stack (max 61), workspace fullscreen (65), and the rail (50), while
+        // staying under the update banner (70), side sheets (89/90) and every
+        // modal (100+).
         style={focusActive
           ? {
             position: 'absolute',
@@ -2550,16 +2552,24 @@ export default function App() {
                      "active" tracks the panel's open flag rather than the route.
                      Without it the row only lit on hover, leaving no indication
                      the panel below was open once the pointer moved away. */
-                  active={bottomTerminalOpen || terminalPoppedOut}
-                  pressed={bottomTerminalOpen || terminalPoppedOut}
+                  active={isTerminalShown(bottomTerminalOpen, panelFullscreen) || terminalPoppedOut}
+                  pressed={isTerminalShown(bottomTerminalOpen, panelFullscreen) || terminalPoppedOut}
                   collapsed={effectiveCollapsed}
                   onClick={closeMobileNav}
                   /* While popped out: focus only (a refused programmatic
                      focus is a harmless no-op). Explicit re-dock lives in the
                      TerminalDetachedBar below -- never a timing heuristic.
                      Workspace fullscreen exits first, as the terminal chord
-                     does, so the docked panel is not opened behind it. */
-                  onClickOverride={() => { exitWorkspaceFullscreen(); if (terminalPoppedOut) focusTerminalPopout(); else toggleBottomTerminal(activeSlotProject) }}
+                     does, so the docked panel is not opened behind it, and a
+                     terminal open beneath fullscreen reads as hidden. */
+                  onClickOverride={() => activateTerminalEntry({
+                    open: bottomTerminalOpen,
+                    workspaceFullscreen: panelFullscreen,
+                    poppedOut: terminalPoppedOut,
+                    exitFullscreen: exitWorkspaceFullscreen,
+                    focusPopout: focusTerminalPopout,
+                    toggle: () => toggleBottomTerminal(activeSlotProject),
+                  })}
                 />
               )}
               {hasRenderableMobileConnect && (
@@ -2678,7 +2688,9 @@ export default function App() {
                 top: FOCUS_INSET,
                 bottom: 0,
                 width: railWidthFor({ isMobile: false, collapsed: effectiveCollapsed }) - 16,
-                zIndex: 62,
+                // Both focus chrome surfaces must clear workspace fullscreen;
+                // one shared layer keeps their peek behaviour symmetric.
+                zIndex: TOPBAR_FOCUS_Z,
                 transform: railPeek.open ? 'translateX(0)' : 'translateX(calc(-100% - 12px))',
                 transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
                 pointerEvents: railPeek.open ? 'auto' : 'none',
@@ -2797,13 +2809,15 @@ export default function App() {
         {terminalEnabled && !terminalPoppedOut && <BottomTerminalPanel />}
         </div>{/* /flex-row or flex-col wrapper */}
         {terminalEnabled && terminalPoppedOut && <TerminalDetachedBar />}
-
-        {/* Self-managed floating panels: lifecycle-driven (hidden → small → chip),
-            not motion.* children, so they live outside AnimatePresence. The browse
-            mirror docks bottom-right and the computer-use PiP bottom-left, so both
-            can be open at once. */}
-        <ComputerUseLiveView />
       </div>
+
+      {/* Self-managed floating panels: lifecycle-driven (hidden → small → chip),
+          not motion.* children, so they live outside AnimatePresence. The browse
+          mirror docks bottom-right and the computer-use PiP bottom-left, so both
+          can be open at once. A direct shell child, outside the content column,
+          because workspace fullscreen makes that column inert while the live view
+          of an agent driving the real desktop must stay visible and in reach. */}
+      <ComputerUseLiveView />
     </div>{/* /Local dashboard grid */}
       </div>{/* /Local pane */}
       {/* Remote instance panes — embedded dashboards kept warm (mounted, hidden)

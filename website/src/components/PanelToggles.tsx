@@ -1,10 +1,12 @@
+import { SquareTerminal } from 'lucide-react'
 import { Btn } from './ui'
-import { PanelBottomLight, PanelBottomSolid, PanelRightLight, PanelRightSolid } from './icons/panels'
+import { SidePanelGlyph } from './SidePanelGlyph'
 import { useAppSelector } from '../store'
 import { selectActiveSlotProject } from '../store/chatSlice'
 import { toggleBottomTerminal, useBottomTerminalOpen } from '../hooks/useBottomTerminal'
 import { useTerminalEnabled } from '../utils/terminalRegistry'
 import { focusPopout, useTerminalPoppedOut } from '../utils/terminalPopout'
+import { activateTerminalEntry, isTerminalShown } from '../lib/terminalEntry'
 import { i18nT } from '../i18n/t'
 
 /** One 28px title-row action cell. Shared so the three panel headers cannot drift. */
@@ -18,22 +20,22 @@ export default function PanelToggles({
   workspaceOpen,
   exitFullscreen,
 }: {
-  workspaceOpen?: boolean
+  workspaceOpen: boolean
+  /** Passed only while workspace fullscreen is on, which covers the docked terminal. */
   exitFullscreen?: () => void
 }) {
   const terminalEnabled = useTerminalEnabled()
   const terminalOpen = useBottomTerminalOpen()
   const terminalPoppedOut = useTerminalPoppedOut()
-  const activityOpen = useAppSelector(s => s.chat.activityOpen)
-  const workspaceActive = workspaceOpen ?? activityOpen
+  const workspaceActive = workspaceOpen
   const cwd = useAppSelector(selectActiveSlotProject)
-  const terminalActive = terminalOpen || terminalPoppedOut
-  // The project's panel family (components/icons/panels.tsx), not Lucide: the
-  // Sessions toggle in the same row and every other panel opener in the app use
-  // it, its filled/dimmed pane shows open vs closed, and Lucide's PanelBottom /
-  // PanelRight already mean "dock bottom / right" in the adjacent overflow menus.
-  const TerminalIcon = terminalActive ? PanelBottomLight : PanelBottomSolid
-  const WorkspaceIcon = workspaceActive ? PanelRightLight : PanelRightSolid
+  const workspaceFullscreen = exitFullscreen !== undefined
+  const terminalShown = isTerminalShown(terminalOpen, workspaceFullscreen)
+  const terminalActive = terminalShown || terminalPoppedOut
+  // The side toggle draws SidePanelGlyph, so its pane follows where the panel
+  // docks, as every other side-panel control does. The terminal toggle draws the
+  // nav rail Terminal row's glyph: a bottom-pane glyph would match the side toggle
+  // whenever the side panel docks bottom.
   const stateClass = (active: boolean) => active
     ? 'text-accent bg-accent/10'
     : 'text-muted hover:text-text hover:bg-bg-hover'
@@ -43,20 +45,25 @@ export default function PanelToggles({
   // already states the action carries no aria-pressed, which would announce the
   // state a second time. A popped-out terminal's click focuses that window and
   // toggles nothing here, so its name says so, matching the "Popped out" chip.
+  // An open terminal covered by workspace fullscreen reads as hidden: its click
+  // leaves fullscreen and brings that terminal back.
   const terminalLabel = terminalPoppedOut
     ? i18nT('pages.chatPage.focus_popped_out_window')
-    : terminalOpen
+    : terminalShown
       ? i18nT('components.panelToggles.hide_terminal')
       : i18nT('components.panelToggles.show_terminal')
   const workspaceLabel = workspaceActive
     ? i18nT('components.panelToggles.hide_side_panel')
     : i18nT('components.panelToggles.show_side_panel')
 
-  const toggleTerminal = () => {
-    exitFullscreen?.()
-    if (terminalPoppedOut) focusPopout()
-    else toggleBottomTerminal(cwd)
-  }
+  const toggleTerminal = () => activateTerminalEntry({
+    open: terminalOpen,
+    workspaceFullscreen,
+    poppedOut: terminalPoppedOut,
+    exitFullscreen,
+    focusPopout,
+    toggle: () => toggleBottomTerminal(cwd),
+  })
 
   return (
     <div className={PANEL_HEADER_ACTIONS_CLS} data-panel-toggles>
@@ -67,7 +74,7 @@ export default function PanelToggles({
           aria-label={terminalLabel}
           onClick={toggleTerminal}
         >
-          <TerminalIcon size={14} />
+          <SquareTerminal size={14} />
         </Btn>
       )}
       {/* The workspace/side-panel toggle is unconditional: every title row that
@@ -80,7 +87,7 @@ export default function PanelToggles({
         aria-label={workspaceLabel}
         onClick={() => window.dispatchEvent(new Event('toggle-activity-panel'))}
       >
-        <WorkspaceIcon size={14} />
+        <SidePanelGlyph light={workspaceActive} size={14} />
       </Btn>
     </div>
   )

@@ -4,6 +4,7 @@ import { Provider } from 'react-redux'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTestStore } from './helpers'
 import { WorkspaceFullscreenContext } from '../components/WorkspacePanelContext'
+import { PanelBottomLight } from '../components/icons/panels'
 
 vi.mock('../pages/chat/ActivityViewer', () => ({ default: () => null }))
 vi.mock('../components/DiffPanel', () => ({ default: () => null }))
@@ -106,6 +107,8 @@ describe('SidePanel workspace controls and retained browser-tab frame', () => {
     for (const control of [fullscreen, terminal, side]) {
       expect(control.className).toContain('w-7')
       expect(control.className).toContain('h-7')
+      // All three are the shared Btn primitive, so they share its pressed feedback.
+      expect(control.className).toContain('active:scale-[0.97]')
     }
     expect(fullscreen.querySelector('svg')?.getAttribute('class') ?? '').toContain('w-3.5')
     for (const control of [terminal, side]) {
@@ -139,5 +142,31 @@ describe('SidePanel workspace controls and retained browser-tab frame', () => {
     const exit = screen.getByRole('button', { name: 'Exit full screen' })
     expect(exit).not.toHaveAttribute('aria-pressed')
     expect(screen.getByRole('region', { name: 'Side panel' }).className).toContain('h-full')
+  })
+
+  it('drops the dock menu while fullscreen, where a dock choice would show no change', () => {
+    const normal = renderPanel()
+    expect(screen.getByTestId('panel-controls-dock')).toBeInTheDocument()
+    normal.unmount()
+    renderPanel(true)
+    expect(screen.queryByTestId('panel-controls-dock')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Exit full screen' })).toBeInTheDocument()
+  })
+
+  it('draws the open panel side toggle for where the panel docks', () => {
+    const glyph = (el: Element) => el.querySelector('svg')!.innerHTML
+    const bottomLight = render(<PanelBottomLight size={14} />).container.querySelector('svg')!.innerHTML
+    const right = renderPanel()
+    const rightGlyph = glyph(screen.getByRole('button', { name: 'Hide side panel' }))
+    right.unmount()
+    setSidePanelDock('bottom')
+    try {
+      renderPanel()
+      const sideGlyph = glyph(screen.getByRole('button', { name: 'Hide side panel' }))
+      expect(sideGlyph).toBe(bottomLight)
+      expect(sideGlyph).not.toBe(rightGlyph)
+    } finally {
+      setSidePanelDock('right')
+    }
   })
 })

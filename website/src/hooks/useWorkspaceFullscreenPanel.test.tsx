@@ -25,7 +25,7 @@ function Panel({ mounted, terminalSaw }: { mounted: () => void; terminalSaw?: (d
 }
 
 const noop = () => {}
-function Harness({ mounted = noop, terminalSaw, focusMode = false }: { mounted?: () => void; terminalSaw?: (defaultPrevented: boolean) => void; focusMode?: boolean }) {
+function Harness({ mounted = noop, terminalSaw, focusMode = false, liveView = false }: { mounted?: () => void; terminalSaw?: (defaultPrevented: boolean) => void; focusMode?: boolean; liveView?: boolean }) {
   const [fullscreen, setFullscreen] = useState(false)
   // Mirrors the dashboard: the topbar, the rail, the panel's host slot and the
   // content grid holding the chat are siblings under the shell. Fullscreen
@@ -41,6 +41,7 @@ function Harness({ mounted = noop, terminalSaw, focusMode = false }: { mounted?:
       <div data-testid="chrome"><button>Chat</button></div>
       <button onClick={() => setFullscreen(value => !value)}>Toggle</button>
     </div>
+    {liveView && <div data-testid="live-view" role="dialog" aria-label="Live desktop view" data-above-workspace-fullscreen><button>Stop</button></div>}
     <div id="activity-bar-slot">
       <WorkspaceFullscreenContext.Provider value={{ fullscreen, exit: () => setFullscreen(false), toggle: () => setFullscreen(value => !value) }}>
         <Panel mounted={mounted} terminalSaw={terminalSaw} />
@@ -90,6 +91,16 @@ describe('workspace fullscreen continuity and keyboard ownership', () => {
     } finally {
       __resetFocusMode()
     }
+  })
+
+  it('keeps the computer-use live view in reach without letting it own Escape', () => {
+    render(<Harness liveView />)
+    fireEvent.click(screen.getByText('Toggle'))
+    const panel = screen.getByTestId('panel')
+    expect(screen.getByTestId('content-grid').inert).toBe(true)
+    expect(screen.getByTestId('live-view').inert).toBeFalsy()
+    fireEvent.keyDown(screen.getByLabelText('draft'), { key: 'Escape' })
+    expect(panel).toHaveAttribute('data-fullscreen', 'false')
   })
 
   it('leaves Escape to a focused terminal and keeps fullscreen', () => {

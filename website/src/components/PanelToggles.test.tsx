@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactElement } from 'react'
+import { SquareTerminal } from 'lucide-react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import PanelToggles from './PanelToggles'
+import { SidePanelDockHost } from './SidePanelGlyph'
+import { PanelBottomSolid, PanelRightSolid } from './icons/panels'
+import { setSidePanelDock } from '../hooks/useSidePanelDock'
 
 const terminal = vi.hoisted(() => ({ poppedOut: false, enabled: true, open: false, toggle: vi.fn(), focus: vi.fn() }))
 vi.mock('../store', () => ({ useAppSelector: () => undefined }))
@@ -26,7 +31,7 @@ describe('workspace panel toggles', () => {
   it.each([false, true])('exits fullscreen before the terminal action, popped out: %s', poppedOut => {
     terminal.poppedOut = poppedOut
     const exit = vi.fn()
-    render(<PanelToggles exitFullscreen={exit} />)
+    render(<PanelToggles workspaceOpen={false} exitFullscreen={exit} />)
     const name = poppedOut ? 'pages.chatPage.focus_popped_out_window' : 'components.panelToggles.show_terminal'
     fireEvent.click(screen.getByRole('button', { name }))
     const action = poppedOut ? terminal.focus : terminal.toggle
@@ -35,9 +40,20 @@ describe('workspace panel toggles', () => {
     expect(exit.mock.invocationCallOrder[0]).toBeLessThan(action.mock.invocationCallOrder[0])
   })
 
+  it('reads an open terminal covered by fullscreen as hidden, and reveals it without toggling', () => {
+    terminal.open = true
+    const exit = vi.fn()
+    render(<PanelToggles workspaceOpen exitFullscreen={exit} />)
+    const button = screen.getByRole('button', { name: 'components.panelToggles.show_terminal' })
+    expect(button.className).not.toContain('bg-accent/10')
+    fireEvent.click(button)
+    expect(exit).toHaveBeenCalledOnce()
+    expect(terminal.toggle).not.toHaveBeenCalled()
+  })
+
   it('names the terminal control by what the click does while the terminal is popped out', () => {
     terminal.poppedOut = true
-    render(<PanelToggles />)
+    render(<PanelToggles workspaceOpen={false} />)
     const button = screen.getByRole('button', { name: 'pages.chatPage.focus_popped_out_window' })
     expect(button).toHaveAttribute('title', 'pages.chatPage.focus_popped_out_window')
     expect(button).not.toHaveAttribute('aria-pressed')
@@ -81,14 +97,43 @@ describe('workspace panel toggles', () => {
       expect(button).not.toHaveAttribute('aria-pressed')
       expect(button.className).toContain('bg-accent/10')
     }
-    expect(terminalButton.querySelector('rect.pi-pane')).toHaveAttribute('fill-opacity', '0.45')
     expect(workspaceButton.querySelector('rect.pi-pane')).toHaveAttribute('fill-opacity', '0.45')
+  })
+
+  it('draws the nav rail Terminal row glyph on the terminal toggle in every state', () => {
+    const rail = render(<SquareTerminal size={14} />).container.querySelector('svg')!.innerHTML
+    const terminalGlyph = () => screen.getByRole('button', { name: /terminal/ }).querySelector('svg')!.innerHTML
+    const closed = render(<PanelToggles workspaceOpen={false} />)
+    expect(terminalGlyph()).toBe(rail)
+    closed.unmount()
+    terminal.open = true
+    render(<PanelToggles workspaceOpen />)
+    expect(terminalGlyph()).toBe(rail)
   })
 
   it('keeps the side-panel toggle when terminals are disabled', () => {
     terminal.enabled = false
-    render(<PanelToggles />)
+    render(<PanelToggles workspaceOpen={false} />)
     expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'components.panelToggles.show_side_panel' })).toBeInTheDocument()
+  })
+
+  it('draws the side toggle for where its host docks the panel', () => {
+    setSidePanelDock('bottom')
+    try {
+      const glyph = (node: ReactElement) => render(node).container.querySelector('svg')!.innerHTML
+      const bottom = glyph(<PanelBottomSolid size={14} />)
+      const right = glyph(<PanelRightSolid size={14} />)
+      const sideGlyph = () => screen.getByRole('button', { name: 'components.panelToggles.show_side_panel' }).querySelector('svg')!.innerHTML
+      const docked = render(<SidePanelDockHost value><PanelToggles workspaceOpen={false} /></SidePanelDockHost>)
+      expect(sideGlyph()).toBe(bottom)
+      const terminalGlyph = screen.getByRole('button', { name: 'components.panelToggles.show_terminal' }).querySelector('svg')!.innerHTML
+      expect(terminalGlyph).not.toBe(sideGlyph())
+      docked.unmount()
+      render(<SidePanelDockHost value={false}><PanelToggles workspaceOpen={false} /></SidePanelDockHost>)
+      expect(sideGlyph()).toBe(right)
+    } finally {
+      setSidePanelDock('right')
+    }
   })
 })

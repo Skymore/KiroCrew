@@ -3,9 +3,14 @@ import { WorkspaceFullscreenContext } from '../components/WorkspacePanelContext'
 import { useDocumentImeLatch } from './useImeGuard'
 import { useFocusMode } from './useFocusMode'
 
-/** Shell children painted above workspace fullscreen, so they keep taking input. */
+/**
+ * Shell children painted above workspace fullscreen, so they keep taking input.
+ * `data-above-workspace-fullscreen` marks a floating window that must stay in
+ * reach over the panel: the computer-use live view, which shows and controls an
+ * agent driving the real desktop. It is non-modal, so it never claims Escape.
+ */
 function paintsAboveFullscreen(element: HTMLElement): boolean {
-  if (element.matches('header')) return true
+  if (element.matches('header') || element.hasAttribute('data-above-workspace-fullscreen')) return true
   return element.classList.contains('focus-peek-top') || element.classList.contains('focus-peek-rail')
 }
 
@@ -17,7 +22,7 @@ function isShellRail(element: HTMLElement): boolean {
 /** Hidden background tabs and covered chrome cannot own the active Escape. */
 function hasNestedWorkspaceOverlay(panel: HTMLElement | null): boolean {
   return Array.from(document.querySelectorAll<HTMLElement>(
-    '[role="dialog"], [role="alertdialog"], [role="menu"], [data-workspace-escape-owner]',
+    '[role="dialog"]:not([data-above-workspace-fullscreen]), [role="alertdialog"], [role="menu"], [data-workspace-escape-owner]',
   )).some(overlay => {
     const marker = overlay.hasAttribute('data-workspace-escape-owner')
     const ownerId = overlay.getAttribute('data-workspace-escape-owner')
@@ -56,7 +61,8 @@ export function useWorkspaceFullscreenPanel(ref: RefObject<HTMLDivElement | null
     // At the dashboard shell the panel's host is a sibling of the content grid
     // AND of the topbar. Fullscreen covers the content rows, never the 42px
     // topbar, so the shell's header keeps taking input while the covered
-    // content grid, rail and decor go inert. In focus mode the header and the
+    // content grid, rail and decor go inert; the computer-use live view floats
+    // above the panel and stays in reach too. In focus mode the header and the
     // rail are overlays painted above the panel, summoned by the peek
     // triggers, so those stay reachable too. The rail is one element across a
     // focus-mode flip, so the effect below decides it and re-runs on the flip.
