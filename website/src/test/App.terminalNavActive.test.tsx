@@ -22,7 +22,7 @@ import { createTestStore, renderWithProviders } from './helpers'
 import App from '../App'
 import { openActivityPanel } from '../store/chatSlice'
 import { setTerminalEnabledFlag } from '../utils/terminalRegistry'
-import { __resetBottomTerminal, openBottomTerminal } from '../hooks/useBottomTerminal'
+import { __resetBottomTerminal, isBottomTerminalOpen, openBottomTerminal } from '../hooks/useBottomTerminal'
 
 // Same isolation as App.terminalEnabledFlag.test.tsx: stub the routed pages and
 // the api client so App mounts without real network, and additionally stub
@@ -177,5 +177,26 @@ describe('App nav rail — Terminal row reflects the docked panel state', () => 
 
     await waitFor(() => expect(screen.getByTestId('chat-page')).toHaveAttribute('data-workspace-fullscreen-state', 'off'))
     await waitFor(() => expect(terminalRow()).toHaveAttribute('aria-pressed', 'true'))
+  })
+
+  it('reads a terminal covered by fullscreen as hidden and reveals it on click', async () => {
+    // A row that toggled here would close the terminal the user meant to bring back.
+    const user = userEvent.setup()
+    const store = createTestStore()
+    store.dispatch(openActivityPanel())
+    renderWithProviders(<App />, { route: '/chat', store })
+    await waitFor(() => expect(terminalRow()).toBeInTheDocument())
+    act(() => { openBottomTerminal() })
+    await waitFor(() => expect(terminalRow()).toHaveAttribute('aria-pressed', 'true'))
+
+    await user.click(screen.getByRole('button', { name: 'Enter workspace fullscreen' }))
+    await waitFor(() => expect(terminalRow()).toHaveAttribute('aria-pressed', 'false'))
+    expect(terminalRow().className).not.toContain('nav-active')
+
+    await user.click(terminalRow())
+
+    await waitFor(() => expect(screen.getByTestId('chat-page')).toHaveAttribute('data-workspace-fullscreen-state', 'off'))
+    await waitFor(() => expect(terminalRow()).toHaveAttribute('aria-pressed', 'true'))
+    expect(isBottomTerminalOpen()).toBe(true)
   })
 })

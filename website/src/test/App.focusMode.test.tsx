@@ -31,6 +31,7 @@ vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: () => ({ subscribeLogs: 
 vi.mock('../hooks/useAgents', () => ({ useAgents: vi.fn(() => ({ agents: [{ name: 'kirocrew' }], defaultAgent: 'kirocrew' })) }))
 vi.mock('../providers/context', () => ({ useProvider: () => ({ id: 'acp' }) }))
 vi.mock('../components/MarkdownRenderer', () => ({ default: ({ content }: { content: string }) => <span>{content}</span>, Lightbox: () => null }))
+vi.mock('../components/ComputerUseLiveView', () => ({ default: () => <div data-testid="computer-use-live-view" data-above-workspace-fullscreen /> }))
 
 vi.mock('../api/client', () => ({
   api: {
@@ -175,6 +176,32 @@ describe('focus mode — shell layout', () => {
     await act(async () => { fireEvent.click(toggle) })
     expect(header.style.zIndex).toBe(String(TOPBAR_FOCUS_Z))
     expect(Number(header.style.zIndex)).toBeGreaterThan(Number(slot.style.zIndex))
+  })
+
+  it('keeps the focus topbar above workspace fullscreen', () => {
+    const rule = cssSource().match(
+      /\[data-workspace-fullscreen\] #activity-bar-slot\s*\{[^}]*z-index:\s*(\d+)/,
+    )
+    expect(rule).not.toBeNull()
+    expect(TOPBAR_FOCUS_Z).toBeGreaterThan(Number(rule?.[1]))
+    const peek = cssSource().match(
+      /\[data-workspace-fullscreen\] \.focus-peek-top,\s*\[data-workspace-fullscreen\] \.focus-peek-rail \{ z-index: (\d+); \}/,
+    )
+    expect(peek).not.toBeNull()
+    expect(Number(peek?.[1])).toBeGreaterThan(Number(rule?.[1]))
+    expect(Number(peek?.[1])).toBeLessThan(TOPBAR_FOCUS_Z)
+    const floating = cssSource().match(
+      /\[data-workspace-fullscreen\] \[data-above-workspace-fullscreen\] \{ z-index: (\d+); \}/,
+    )
+    expect(floating).not.toBeNull()
+    expect(Number(floating?.[1])).toBeGreaterThan(Number(rule?.[1]))
+    expect(Number(floating?.[1])).toBeLessThan(TOPBAR_FOCUS_Z)
+  })
+
+  it('mounts the computer-use live view as a shell child, outside the content column fullscreen makes inert', async () => {
+    renderWithProviders(<App />, { route: '/chat' })
+    const liveView = await screen.findByTestId('computer-use-live-view')
+    expect(liveView.parentElement).toBe(screen.getByTestId('dashboard-shell'))
   })
 
   it('collapses both chrome tracks and mounts the peek strips when on', async () => {
@@ -505,7 +532,9 @@ describe('focus mode — shell layout', () => {
     // close grace → close → regrow under the pointer → re-open). jsdom applies no
     // CSS, so the layer is the part a test can hold.
     const header = document.querySelector('header.topbar') as HTMLElement
-    expect(header.style.zIndex).toBe('62')
+    const rail = screen.getByRole('navigation', { name: 'Main navigation' })
+    expect(header.style.zIndex).toBe(String(TOPBAR_FOCUS_Z))
+    expect(rail.style.zIndex).toBe(String(TOPBAR_FOCUS_Z))
     expect(screen.getByTestId('focus-peek-top').className).toContain('z-[61]')
     expect(screen.getByTestId('focus-peek-rail').className).toContain('z-[61]')
 

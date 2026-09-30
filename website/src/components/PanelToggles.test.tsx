@@ -26,7 +26,7 @@ describe('workspace panel toggles', () => {
   it.each([false, true])('exits fullscreen before the terminal action, popped out: %s', poppedOut => {
     terminal.poppedOut = poppedOut
     const exit = vi.fn()
-    render(<PanelToggles exitFullscreen={exit} />)
+    render(<PanelToggles workspaceOpen={false} exitFullscreen={exit} />)
     const name = poppedOut ? 'pages.chatPage.focus_popped_out_window' : 'components.panelToggles.show_terminal'
     fireEvent.click(screen.getByRole('button', { name }))
     const action = poppedOut ? terminal.focus : terminal.toggle
@@ -35,9 +35,21 @@ describe('workspace panel toggles', () => {
     expect(exit.mock.invocationCallOrder[0]).toBeLessThan(action.mock.invocationCallOrder[0])
   })
 
+  it('reads an open terminal covered by fullscreen as hidden, and reveals it without toggling', () => {
+    terminal.open = true
+    const exit = vi.fn()
+    render(<PanelToggles workspaceOpen exitFullscreen={exit} />)
+    const button = screen.getByRole('button', { name: 'components.panelToggles.show_terminal' })
+    expect(button.className).not.toContain('bg-accent/10')
+    expect(button.querySelector('rect.pi-pane')).not.toHaveAttribute('fill-opacity', '0.45')
+    fireEvent.click(button)
+    expect(exit).toHaveBeenCalledOnce()
+    expect(terminal.toggle).not.toHaveBeenCalled()
+  })
+
   it('names the terminal control by what the click does while the terminal is popped out', () => {
     terminal.poppedOut = true
-    render(<PanelToggles />)
+    render(<PanelToggles workspaceOpen={false} />)
     const button = screen.getByRole('button', { name: 'pages.chatPage.focus_popped_out_window' })
     expect(button).toHaveAttribute('title', 'pages.chatPage.focus_popped_out_window')
     expect(button).not.toHaveAttribute('aria-pressed')
@@ -87,7 +99,7 @@ describe('workspace panel toggles', () => {
 
   it('keeps the side-panel toggle when terminals are disabled', () => {
     terminal.enabled = false
-    render(<PanelToggles />)
+    render(<PanelToggles workspaceOpen={false} />)
     expect(screen.getAllByRole('button')).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'components.panelToggles.show_side_panel' })).toBeInTheDocument()
   })

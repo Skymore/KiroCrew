@@ -562,7 +562,10 @@ to the Side-panel toggle because the two panels share the workspace edge and are
 opened and closed together. The nav rail keeps its Terminal row: it is the only pointer
 entry on routes other than chat and in the phone drawer, where neither host of these
 controls renders, so without it the docked terminal has no pointer entry there. Both entries
-read the panel's one open flag, so their lit states cannot disagree.
+read the panel's one open flag, so their lit states cannot disagree. Workspace fullscreen
+covers the docked terminal, so while it is on both entries, and the chord, read an open
+terminal as hidden, and activating one leaves fullscreen to bring that terminal back
+rather than closing it.
 
 Workspace fullscreen expands the existing SidePanel subtree across the shell's
 content grid while retaining the topbar. It must not remount tab bodies, editor
@@ -571,6 +574,8 @@ visible fullscreen control exits while focus is inside a PTY. It is desktop-only
 the phone has no activity-bar slot to expand, so a file there keeps its own
 full-screen action. Only focus mode puts the fullscreen strip at the window's top
 corner, so only focus mode reserves the Windows and Linux caption band on it.
+The computer-use live view stays above the fullscreen layer and in reach, since it
+shows and controls an agent driving the real desktop.
 
 ### Split view: leading edge and focus
 
