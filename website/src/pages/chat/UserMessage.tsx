@@ -609,23 +609,30 @@ const UserMessage = memo(function UserMessage({ content, meta, timestamp, timest
   const canCopyLink = !!(messageTs && slotKey)
   const canPin = !!(messageTs && onTogglePin)
   const canEditResend = !!(canEdit && onEditResend)
-  // Row shape with Quote offered: seat + Copy + More. The seat is Quote, or
-  // Reply in thread on a surface that offers it (Quote then joins the menu).
-  // Copy always follows the seat and never moves into More: one control over
-  // the max-two-buttons rule, a deliberate product ruling, because Copy is the
-  // most-used action.
+  // Row shape with Quote offered: seat + Copy + More. The seat is Reply in
+  // thread on a surface that offers it, else Edit & Resend while this message
+  // can be edited (the action people reach for most on their own message),
+  // else Quote. Copy always follows the seat and never moves into More: one
+  // control over the max-two-buttons rule, a deliberate product ruling,
+  // because Copy is the most-used action.
+  // More lists only what the row does not show, as it always did for Copy, so
+  // no action appears twice on one strip. The right-click menu stays the full
+  // list: it is a different surface with no row beside it.
   // A message that is ONLY a carried quote has no body of its own to quote:
   // `quoteFromMessage` refuses empty text, so the action would be a silent
   // no-op. Withheld from the row and both menus instead (fork Opus review).
   const quoteOffered = !!onQuoteMessage && quotableContent.trim().length > 0
-  const quoteInRow = quoteOffered && !onReplyInThread
   const compactRow = !!onQuoteMessage
+  const editInRow = compactRow && canEditResend && !onReplyInThread
+  const quoteInRow = quoteOffered && !onReplyInThread && !editInRow
+  const quoteInMore = quoteOffered && !quoteInRow
+  const editInMore = canEditResend && !editInRow && !standIn
   // Copy is a row button, so a message with nothing else to offer (a bare
   // carried quote on a surface without link, pin or edit) shows no empty More.
   // App message actions the owner approved for the user's own messages (their
   // own `user` role grant): rows at the end of More, on the rows that have one.
   const appActions = compactRow && !standIn && quotableContent.trim().length > 0 ? userRoleActions : NO_ACTIONS
-  const moreHasItems = quoteOffered || canCopyLink || canPin || (canEditResend && !standIn) || appActions.length > 0
+  const moreHasItems = quoteInMore || canCopyLink || canPin || editInMore || appActions.length > 0
   const menuItems: MessageMenuItem[] = onQuoteMessage ? [
     ...(quoteOffered ? [{ id: 'quote', label: i18nT('pages.chat.userMessage.quote_message'), icon: <Quote size={14} />, onSelect: quoteShown }] : []),
     // "Copy text", the words the reply's menus use, so the same action reads
@@ -879,6 +886,20 @@ const UserMessage = memo(function UserMessage({ content, meta, timestamp, timest
             <MessageSquare size={14} />
           </button>
         )}
+        {editInRow && (
+          <button
+            onClick={startEdit}
+            // `data-message-edit`: dropped while the row is the pinned
+            // banner's stand-in, like the pencil on the row without More below.
+            data-message-edit=""
+            className="text-muted hover:text-text p-0.5 rounded transition-colors"
+            data-testid="edit-message"
+            title={i18nT('pages.chat.userMessage.edit_resend')}
+            aria-label={i18nT('pages.chat.userMessage.edit_resend')}
+          >
+            <Pencil size={14} />
+          </button>
+        )}
         {quoteInRow && (
           <button
             onClick={quoteShown}
@@ -915,10 +936,7 @@ const UserMessage = memo(function UserMessage({ content, meta, timestamp, timest
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[210px]">
-              {/* Quote is listed here too, even when it has the row seat: the
-                  bubble's right-click menu leads with it, so the two
-                  look-alike menus on one message agree. */}
-              {quoteOffered && (
+              {quoteInMore && (
                 <DropdownMenuItem data-testid="quote-message-menu-item" onSelect={quoteShown}>
                   {/* Layout and the touch floor live on this span: the primitive owns its own classes (shadcn/no-restyle). */}
                   <span className="flex items-center gap-2 [@media(hover:none)]:min-h-7">
@@ -942,7 +960,7 @@ const UserMessage = memo(function UserMessage({ content, meta, timestamp, timest
                   </span>
                 </DropdownMenuItem>
               )}
-              {canEditResend && !standIn && (
+              {editInMore && (
                 <DropdownMenuItem data-testid="edit-menu-item" onSelect={startEdit}>
                   {/* Layout and the touch floor live on this span: the primitive owns its own classes (shadcn/no-restyle). */}
                   <span className="flex items-center gap-2 [@media(hover:none)]:min-h-7">
